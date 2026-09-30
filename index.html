@@ -31,7 +31,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .mapbar .msg{background:var(--paper);padding:5px 8px;border-radius:5px;font-size:.85rem;border:1px solid var(--line)}
 aside{background:var(--paper);border-left:1px solid var(--line);overflow-y:auto;display:flex;flex-direction:column}
 nav.tabs{display:flex;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--paper);z-index:2}
-nav.tabs button{flex:1;background:none;color:var(--muted);border:none;border-bottom:3px solid transparent;border-radius:0;padding:12px 6px;font-weight:600}
+nav.tabs button{flex:1;font-size:.85rem;background:none;color:var(--muted);border:none;border-bottom:3px solid transparent;border-radius:0;padding:12px 6px;font-weight:600}
 nav.tabs button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--accent)}
 section.panel{padding:16px;display:none}
 section.panel.on{display:block}
@@ -47,7 +47,7 @@ p.note{color:var(--muted);font-size:.85rem;margin:6px 0}
 .field .unit{display:block;font-size:.78rem;color:var(--muted)}
 .field input{font:inherit;width:100%;padding:5px 7px;border:1px solid var(--line);border-radius:4px;text-align:right;font-variant-numeric:tabular-nums}
 .src{display:inline-block;font-size:.72rem;padding:0 6px;border-radius:9px;border:1px solid currentColor;margin-left:6px;white-space:nowrap;vertical-align:1px}
-.s-verified{color:var(--ver)}.s-estimate{color:var(--est)}.s-user{color:var(--usr)}.s-unavailable{color:var(--una)}.s-measured{color:var(--mea)}.s-secondary{color:var(--est)}
+.s-verified{color:var(--ver)}.s-estimate{color:var(--est)}.s-user{color:var(--usr)}.s-unavailable{color:var(--una)}.s-measured{color:var(--mea)}.s-secondary{color:var(--est)}.s-search{color:var(--muted)}
 .clist{list-style:none;margin:0;padding:0}
 .clist li{padding:8px 0;border-bottom:1px solid #eef1f2}
 .clist .ds{font-weight:600}
@@ -69,6 +69,14 @@ select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:5
 .saved li{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #eef1f2}
 .saved li span{flex:1}
 #report{display:none}
+.reg>li{padding:12px 0}
+.reg-head{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.reg ul.found{margin:6px 0 0;padding-left:18px;font-size:.9rem}
+.reg-check{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.reg-check select{font-size:.85rem;padding:5px}
+.reg-check input{flex:1 1 140px;font:inherit;font-size:.85rem;padding:5px 7px;border:1px solid var(--line);border-radius:4px}
+.leaflet-popup-content button{font-size:.85rem;padding:5px 10px}
+.leaflet-control-layers{font:inherit;font-size:.85rem}
 @media (max-width:860px){.app{grid-template-columns:1fr;height:auto}#mapWrap{height:55vh}aside{border-left:none;border-top:1px solid var(--line)}}
 @media print{
   body{background:#fff}
@@ -101,11 +109,13 @@ select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:5
   <aside>
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="site" aria-selected="true">1 Site</button>
-      <button role="tab" data-tab="scheme" aria-selected="false">2 Scheme</button>
-      <button role="tab" data-tab="viab" aria-selected="false">3 Viability</button>
+      <button role="tab" data-tab="cons" aria-selected="false">2 Constraints</button>
+      <button role="tab" data-tab="scheme" aria-selected="false">3 Scheme</button>
+      <button role="tab" data-tab="viab" aria-selected="false">4 Viability</button>
       <button role="tab" data-tab="saved" aria-selected="false">Saved</button>
     </nav>
     <section class="panel on" id="p-site"></section>
+    <section class="panel" id="p-cons"></section>
     <section class="panel" id="p-scheme"></section>
     <section class="panel" id="p-viab"></section>
     <section class="panel" id="p-saved"></section>
@@ -177,7 +187,7 @@ const VLABEL = {buildCost:'build cost', cil:'CIL', s106:'S106', asking:'asking p
 
 const API = 'https://www.planning.data.gov.uk/entity.json';
 const STORE = 's2s-sites-v1';
-const SRC_LABEL = {verified:'verified data', secondary:'secondary source', measured:'measured', estimate:'estimate', user:'your input', unavailable:'unavailable'};
+const SRC_LABEL = {verified:'verified data', secondary:'secondary source', measured:'measured', estimate:'estimate', user:'your input', unavailable:'unavailable', search:'data search'};
 const DATASETS = {
   'conservation-area':'Conservation area',
   'listed-building':'Listed building',
@@ -219,6 +229,7 @@ const VFIELDS = [
 // ===== State =====
 let site = blankSite();
 let boundaryLayer = null, bfLayer = null, dirty = false;
+const plotGeoms = new Map();
 
 function blankSite(){
   const via = {};
@@ -226,7 +237,7 @@ function blankSite(){
   return {id:'s'+Date.now(), name:'', notes:'', boundary:null,
     area:{v:null, src:'unavailable'}, borough:null,
     constraints:{status:'none', items:[], nearby:[], checked:[], at:null, error:null},
-    units:[], storeys:{v:3,src:'estimate'}, efficiency:{v:85,src:'estimate'}, via};
+    units:[], storeys:{v:3,src:'estimate'}, efficiency:{v:85,src:'estimate'}, via, plots:[], plotGeom:{}, checks:{}};
 }
 
 // ===== Helpers =====
@@ -245,9 +256,10 @@ async function getJSON(url, ms=25000){
   try{ const r = await fetch(url,{signal:ctrl.signal}); if(!r.ok) throw new Error('HTTP '+r.status); return await r.json(); }
   finally{ clearTimeout(t); }
 }
-function toWKT(geom){
-  const ring = geom.coordinates[0].map(c=>c[0].toFixed(6)+' '+c[1].toFixed(6)).join(',');
-  return 'POLYGON(('+ring+'))';
+function toWKT(g){
+  const ring = r=>'('+r.map(c=>c[0].toFixed(6)+' '+c[1].toFixed(6)).join(',')+')';
+  if(g.type==='MultiPolygon') return 'MULTIPOLYGON('+g.coordinates.map(p=>'('+p.map(ring).join(',')+')').join(',')+')';
+  return 'POLYGON('+g.coordinates.map(ring).join(',')+')';
 }
 function params(obj){
   const p = new URLSearchParams();
@@ -257,20 +269,40 @@ function params(obj){
 
 // ===== Map =====
 const map = L.map('map').setView([51.4466,-0.4096], 15);
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'&copy; OpenStreetMap contributors. Planning data: planning.data.gov.uk (OGL)'}).addTo(map);
+// Paste your free ArcGIS key between the quotes to meet Esri's terms of use.
+const ESRI_KEY = '';
+const aerial = L.tileLayer(ESRI_KEY
+  ? 'https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?token='+ESRI_KEY
+  : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  {maxZoom:20, maxNativeZoom:19, attribution:'Imagery &copy; Esri and its data partners. Plots &copy; HM Land Registry, OS 100026316 (OGL)'});
+const street = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {maxZoom:20, maxNativeZoom:19, attribution:'&copy; OpenStreetMap contributors. Plots &copy; HM Land Registry, OS 100026316 (OGL)'});
+let prefs = {}; try{ prefs = JSON.parse(localStorage.getItem('s2s-map')||'{}'); }catch{}
+(prefs.base==='Map' ? street : aerial).addTo(map);
+const plotStyle = ()=>map.hasLayer(aerial) ? {color:'#ffd400',weight:1.5,fillOpacity:0} : {color:'#6a4c93',weight:1.2,fillOpacity:0};
+const plotsLayer = L.geoJSON(null,{style:plotStyle, pmIgnore:true, onEachFeature:(f,l)=>{
+  l.options.pmIgnore = true;
+  plotGeoms.set(String(f.properties.entity), f.geometry);
+  l.on('click', ()=>l.bindPopup(plotPopup(f)).openPopup());
+}});
+if(prefs.plots!==false) plotsLayer.addTo(map);
+L.control.layers({'Aerial':aerial,'Map':street},{'Plot outlines':plotsLayer},{position:'bottomleft', collapsed:false}).addTo(map);
+function savePrefs(){ try{ localStorage.setItem('s2s-map', JSON.stringify({base:map.hasLayer(street)?'Map':'Aerial', plots:map.hasLayer(plotsLayer)})); }catch{} }
+map.on('baselayerchange', ()=>{ plotsLayer.setStyle(plotStyle()); savePrefs(); });
+map.on('overlayadd overlayremove', ()=>{ savePrefs(); loadPlots(); });
 map.pm.addControls({position:'topleft', drawMarker:false, drawCircleMarker:false, drawPolyline:false, drawCircle:false, drawText:false,
   cutPolygon:false, rotateMode:false, dragMode:false, drawRectangle:true, drawPolygon:true, editMode:true, removalMode:true});
-map.pm.setGlobalOptions({pathOptions:{color:'#2b5d6b', weight:3, fillOpacity:.15}});
+map.pm.setGlobalOptions({pathOptions:{color:'#00b4d8', weight:3, fillColor:'#00b4d8', fillOpacity:.2}});
 
 map.on('pm:create', e=>{
   if(boundaryLayer){ map.removeLayer(boundaryLayer); }
+  site.plots = []; site.plotGeom = {};
   boundaryLayer = e.layer;
   hookBoundary(boundaryLayer);
   boundaryChanged(true);
 });
 map.on('pm:remove', e=>{
-  if(e.layer===boundaryLayer){ boundaryLayer=null; site.boundary=null; site.area={v:null,src:'unavailable'};
-    site.constraints={status:'none',items:[],nearby:[],checked:[],at:null,error:null}; site.borough=null; markDirty(); renderAll(); }
+  if(e.layer===boundaryLayer){ boundaryLayer=null; clearBoundary(); }
 });
 function hookBoundary(layer){ layer.on('pm:edit', ()=>boundaryChanged(false)); }
 function boundaryChanged(runCheck){
@@ -281,12 +313,92 @@ function boundaryChanged(runCheck){
   markDirty(); renderAll();
   if(runCheck) checkConstraints();
 }
-function drawSavedBoundary(){
+function drawSavedBoundary(fit){
   if(boundaryLayer){ map.removeLayer(boundaryLayer); boundaryLayer=null; }
   if(!site.boundary) return;
-  boundaryLayer = L.geoJSON(site.boundary,{style:{color:'#2b5d6b',weight:3,fillOpacity:.15}}).getLayers()[0].addTo(map);
+  boundaryLayer = L.geoJSON(site.boundary,{style:{color:'#00b4d8',weight:3,fillColor:'#00b4d8',fillOpacity:.2}}).getLayers()[0].addTo(map);
   hookBoundary(boundaryLayer);
-  map.fitBounds(boundaryLayer.getBounds(),{maxZoom:18, padding:[40,40]});
+  if(fit!==false) map.fitBounds(boundaryLayer.getBounds(),{maxZoom:19, padding:[40,40]});
+}
+
+// ===== Property plots (HM Land Registry INSPIRE polygons via planning.data.gov.uk) =====
+let plotTimer = null, plotCtrl = null;
+function loadPlots(){
+  clearTimeout(plotTimer);
+  plotTimer = setTimeout(async ()=>{
+    if(!map.hasLayer(plotsLayer)) return;
+    if(map.getZoom()<17){ plotsLayer.clearLayers(); mapMsg('Zoom in closer to see plot outlines.', 3000); return; }
+    if(plotCtrl) plotCtrl.abort(); plotCtrl = new AbortController();
+    const b = map.getBounds();
+    const poly = {type:'Polygon', coordinates:[[[b.getWest(),b.getSouth()],[b.getEast(),b.getSouth()],[b.getEast(),b.getNorth()],[b.getWest(),b.getNorth()],[b.getWest(),b.getSouth()]]]};
+    try{
+      const r = await fetch('https://www.planning.data.gov.uk/entity.geojson?'+params({dataset:'title-boundary', geometry:toWKT(poly), geometry_relation:'intersects', limit:500}), {signal:plotCtrl.signal});
+      if(!r.ok) throw new Error();
+      const gj = await r.json();
+      plotsLayer.clearLayers(); plotsLayer.addData(gj);
+    }catch(e){ if(e.name!=='AbortError') mapMsg('Plot outlines unavailable right now.', 4000); }
+  }, 350);
+}
+map.on('moveend', loadPlots);
+// ===== Address lookup: OpenStreetMap (Nominatim) for the street address, postcodes.io for the postcode =====
+const addrCache = new Map();
+async function lookupAddress(geom){
+  const pt = turf.pointOnFeature(turf.feature(geom)).geometry.coordinates;
+  const key = pt[0].toFixed(6)+','+pt[1].toFixed(6);
+  if(addrCache.has(key)) return addrCache.get(key);
+  const out = {text:null, postcode:null};
+  try{
+    const d = await getJSON('https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat='+pt[1]+'&lon='+pt[0], 10000);
+    const a = d.address||{};
+    const line1 = [a.house_number||a.house_name, a.road].filter(Boolean).join(' ');
+    const town = a.suburb||a.town||a.city_district||a.village||a.city||'';
+    out.text = [line1, town].filter(Boolean).join(', ') || null;
+    out.number = !!(a.house_number||a.house_name);
+    out.town = town||null;
+    out.postcode = a.postcode||null;
+  }catch{}
+  try{
+    const p = await getJSON('https://api.postcodes.io/postcodes?limit=1&radius=200&lon='+pt[0]+'&lat='+pt[1], 10000);
+    if(p.result && p.result[0]) out.postcode = p.result[0].postcode;
+  }catch{}
+  addrCache.set(key, out); return out;
+}
+function addrHTML(a){
+  if(!a) return 'Looking up address…';
+  if(!a.text && !a.postcode) return 'Address unavailable. Check the title register.';
+  return esc([a.text, a.postcode].filter(Boolean).join(', '))+badge('estimate')+
+    '<br><small>Nearest address from OpenStreetMap'+(a.number?'':', no house number found')+'. A plot can cover more than one address.</small>';
+}
+function plotPopup(f){
+  const id = String(f.properties.entity), inSite = site.plots.includes(id);
+  lookupAddress(f.geometry).then(a=>{ const el = document.querySelector('[data-addr="'+id+'"]'); if(el) el.innerHTML = addrHTML(a); });
+  return '<b>Land Registry plot</b><br><span data-addr="'+id+'">Looking up address…</span><br>INSPIRE ID: '+esc(f.properties.reference)+'<br>Area: '+m2(turf.area(f.geometry))+
+    '<br><button class="'+(inSite?'ghost':'')+'" data-plot="'+id+'" style="margin-top:6px">'+(inSite?'Remove from site':'Add to site')+'</button>'+
+    '<br><small>Plot extent only. The owner needs a title register.</small>';
+}
+document.getElementById('map').addEventListener('click', e=>{
+  const b = e.target.closest('[data-plot]'); if(!b) return;
+  const id = b.dataset.plot;
+  site.plotGeom = site.plotGeom || {};
+  if(site.plots.includes(id)){ site.plots = site.plots.filter(x=>x!==id); delete site.plotGeom[id]; }
+  else { site.plots.push(id); site.plotGeom[id] = {geom:plotGeoms.get(id), ref:(plotsLayer.getLayers().find(l=>String(l.feature.properties.entity)===id)||{feature:{properties:{}}}).feature.properties.reference, address:null};
+    lookupAddress(plotGeoms.get(id)).then(a=>{ if(site.plotGeom[id]){ site.plotGeom[id].address = a; if(!site.name && a.text){ site.name = [a.text, a.postcode].filter(Boolean).join(', '); } markDirty(); renderSite(); $('#siteName').value = site.name; } }); }
+  map.closePopup(); plotsToBoundary();
+});
+function plotsToBoundary(){
+  const geoms = site.plots.map(id=>(site.plotGeom[id]||{}).geom).filter(Boolean);
+  if(!geoms.length){ if(boundaryLayer){ map.removeLayer(boundaryLayer); boundaryLayer=null; } clearBoundary(); return; }
+  let g = geoms.length===1 ? turf.feature(geoms[0]) : turf.union(turf.featureCollection(geoms.map(x=>turf.feature(x))));
+  g = g.geometry;
+  if(g.type==='MultiPolygon' && g.coordinates.length===1) g = {type:'Polygon', coordinates:g.coordinates[0]};
+  site.boundary = g; site.area = {v:Math.round(turf.area(g)), src:'measured'};
+  drawSavedBoundary(false);
+  if(site.constraints.status==='done') site.constraints.status='stale';
+  markDirty(); renderAll(); checkConstraints();
+}
+function clearBoundary(){
+  site.boundary=null; site.plots=[]; site.plotGeom={}; site.area={v:null,src:'unavailable'}; site.borough=null;
+  site.constraints={status:'none',items:[],nearby:[],checked:[],at:null,error:null}; markDirty(); renderAll();
 }
 
 // Postcode search (postcodes.io, free)
@@ -302,7 +414,7 @@ $('#pc').addEventListener('keydown', e=>{ if(e.key==='Enter') $('#pcBtn').click(
 $('#bfBtn').onclick = async ()=>{
   if(map.getZoom()<14){ mapMsg('Zoom in further to load brownfield sites.', 4000); return; }
   const b = map.getBounds();
-  const poly = {coordinates:[[[b.getWest(),b.getSouth()],[b.getEast(),b.getSouth()],[b.getEast(),b.getNorth()],[b.getWest(),b.getNorth()],[b.getWest(),b.getSouth()]]]};
+  const poly = {type:'Polygon', coordinates:[[[b.getWest(),b.getSouth()],[b.getEast(),b.getSouth()],[b.getEast(),b.getNorth()],[b.getWest(),b.getNorth()],[b.getWest(),b.getSouth()]]]};
   mapMsg('Loading brownfield sites…');
   try{
     const d = await getJSON(API+'?'+params({dataset:'brownfield-land', geometry:toWKT(poly), geometry_relation:'intersects', limit:500}));
@@ -328,7 +440,7 @@ async function checkConstraints(){
   site.constraints = {status:'running', items:[], nearby:[], checked:[], at:null, error:null};
   renderSite();
   const wkt = toWKT(site.boundary);
-  const buf = turf.buffer(turf.polygon(site.boundary.coordinates), 50, {units:'meters'});
+  const buf = turf.buffer(turf.feature(site.boundary), 50, {units:'meters'});
   try{
     const [hit, near, lpa] = await Promise.all([
       getJSON(API+'?'+params({dataset:Object.keys(DATASETS), geometry:wkt, geometry_relation:'intersects', exclude_field:'geometry', limit:100})),
@@ -362,32 +474,115 @@ function field(path, obj, label, unit){
     '</label><input id="f-'+path+'" data-path="'+path+'" inputmode="decimal" value="'+(obj.v===null||obj.v===undefined?'':(+obj.v).toString())+'"></div>';
 }
 
+const LINKS = {
+  datahub:['London Planning Datahub','https://www.london.gov.uk/what-we-do/planning/digital-planning-0/planning-london-datahub'],
+  flood:['Flood map for planning','https://flood-map-for-planning.service.gov.uk/'],
+  hmlr:['HM Land Registry property search','https://search-property-information.service.gov.uk/']
+};
+const COUNCIL = {
+  'Hounslow':{planning:['Hounslow planning pages','https://www.hounslow.gov.uk/planningnotices'], conservation:['Hounslow conservation areas','https://www.hounslow.gov.uk/planning-building/design-conservation/4']},
+  'Richmond upon Thames':{planning:['Richmond planning pages','https://www.richmond.gov.uk/services/planning']}
+};
+const REGISTER = [
+  {key:'ca', label:'Conservation area', ds:'conservation-area', council:'conservation'},
+  {key:'ca-near', label:'Conservation area within 50 m', ds:'conservation-area', near:true},
+  {key:'lb', label:'Listed building on site', ds:'listed-building'},
+  {key:'lb-near', label:'Listed building within 50 m', ds:'listed-building', near:true},
+  {key:'sm', label:'Scheduled monument', ds:'scheduled-monument'},
+  {key:'a4', label:'Article 4 direction', ds:'article-4-direction-area'},
+  {key:'flood', label:'Flood risk zone', ds:'flood-risk-zone', links:['flood']},
+  {key:'gb', label:'Green belt', ds:'green-belt'},
+  {key:'mol', label:'Metropolitan Open Land', manual:'Not in the data. Check the local plan policies map.', council:'planning'},
+  {key:'tpo', label:'Tree preservation orders', ds:'tree-preservation-zone', partial:true, council:'planning'},
+  {key:'bf', label:'Brownfield register', ds:'brownfield-land'},
+  {key:'history', label:'Planning history', manual:'Not in the data. Search the council planning pages or the London Datahub for this address.', council:'planning', links:['datahub']},
+  {key:'owner', label:'Ownership and title', manual:'The plot outline is shown free. The owner needs a title register from HM Land Registry, for a small fee.', links:['hmlr']},
+  {key:'other', label:'Other local plan designations', manual:'Site allocations, town centres, locally listed buildings, views. Check the local plan policies map.', council:'planning'}
+];
+const RESULT_LABEL = {'':'Not checked by hand', applies:'Checked: applies', none:"Checked: doesn't apply"};
+function councilOf(){ const b = site.borough||''; return Object.keys(COUNCIL).find(k=>b.includes(k)); }
+function registerRow(r){
+  const c = site.constraints, chk = site.checks[r.key] || {result:'', note:'', date:''};
+  let items = [], data;
+  if(r.manual) data = 'unavailable';
+  else if(!(c.status==='done'||c.status==='stale')) data = 'notrun';
+  else {
+    items = (r.near ? c.nearby : c.items).filter(e=>e.dataset===r.ds);
+    data = items.length ? 'found' : (r.partial ? 'unavailable' : 'notfound');
+  }
+  let status, src;
+  if(chk.result==='applies'){ status='Applies'; src='user'; }
+  else if(chk.result==='none'){ status="Doesn't apply"; src='user'; }
+  else if(data==='found'){ status='Found'; src = items.every(e=>e.quality==='authoritative') ? 'verified' : 'secondary'; }
+  else if(data==='notfound'){ status='Not found in data'; src='search'; }
+  else if(data==='notrun'){ status='Not checked yet'; src='unavailable'; }
+  else { status='Unavailable'; src='unavailable'; }
+  const unresolved = (data==='unavailable'||data==='notrun') && !chk.result;
+  return {items, data, status, src, chk, unresolved, found: chk.result==='applies' || (data==='found' && chk.result!=='none')};
+}
+
 function renderSite(){
   const c = site.constraints; let h = '';
   if(!site.boundary){
-    h += '<div class="empty">Draw the site boundary with the polygon or rectangle tool on the left of the map. Search a postcode to get there faster.</div>';
+    h += '<div class="empty">Zoom in on the aerial view to see property plots. Click a plot and choose Add to site, or draw your own boundary with the polygon or rectangle tool. Search a postcode to get there faster.</div>';
   } else {
-    h += '<h2>Site</h2><div class="kv"><span class="k">Borough</span><span class="v">'+esc(site.borough||'not yet checked')+'</span></div>';
-    h += field('area', site.area, 'Site area', 'm². Measured from your boundary, not a title plan. Type to override.');
-    h += '<h2>Planning constraints</h2>';
+    h += '<h2>Site</h2><div class="kv"><span class="k">Borough</span><span class="v">'+esc(site.borough||'not yet checked')+'</span>'+
+      '<span class="k">Boundary</span><span class="v">'+(site.plots.length? site.plots.length+' Land Registry plot'+(site.plots.length>1?'s':'') : 'drawn by you')+'</span></div>';
+    if(site.plots.length){
+      h += '<h2>Plots</h2><ul class="clist">'+site.plots.map(id=>{ const p = site.plotGeom[id]||{};
+        return '<li>'+(p.address===undefined||p.address===null?'Looking up address…':addrHTML(p.address))+'<br><small class="note">INSPIRE ID '+esc(p.ref||id)+'</small></li>'; }).join('')+'</ul>';
+    }
+    h += field('area', site.area, 'Site area', 'm². '+(site.plots.length?'From Land Registry plot outlines, which are indicative.':'Measured from your boundary, not a title plan.')+' Type to override.');
     if(c.status==='running') h += '<p class="note">Checking planning data…</p>';
     if(c.status==='error') h += '<div class="flag bad">'+esc(c.error)+' Constraints are unavailable, not clear. <button class="link" id="recheck">Try again</button></div>';
     if(c.status==='stale') h += '<div class="flag">Boundary changed since the last check. <button class="link" id="recheck">Check again</button></div>';
-    if(c.status==='done' || c.status==='stale'){
-      h += c.items.length ? '<ul class="clist">'+c.items.map(entLine).join('')+'</ul>' : '<p>No designations found inside the boundary in the data.</p>';
-      h += '<h2>Within 50 m</h2>';
-      h += c.nearby.length ? '<ul class="clist">'+c.nearby.map(entLine).join('')+'</ul>' : '<p class="note">None found in the data.</p>';
-      const found = new Set(c.items.map(e=>e.dataset));
-      const none = c.checked.filter(d=>!found.has(d) && d!=='tree-preservation-zone').map(d=>DATASETS[d]);
-      h += '<h2>Not found, not proof of absence</h2><p class="note">'+esc(none.join(', '))+'. Data coverage varies by council.</p>';
-      h += '<h2>Always check by hand</h2><ul class="clist"><li>'+badge('unavailable')+' '+esc(ALWAYS_CHECK['tree-preservation-zone'])+'</li><li>'+badge('unavailable')+' '+esc(ALWAYS_CHECK.planning)+'</li><li>'+badge('unavailable')+' Ownership needs a title register from HM Land Registry.</li></ul>';
-      h += '<p class="note">Checked '+new Date(c.at).toLocaleString('en-GB')+'. Source: planning.data.gov.uk (beta).</p>';
-    }
     if(c.status==='none') h += '<button id="recheck">Check constraints</button>';
+    if(c.status==='done'||c.status==='stale'){
+      const rows = REGISTER.map(registerRow);
+      const found = REGISTER.filter((r,i)=>rows[i].found).map(r=>r.label);
+      const open = rows.filter(x=>x.unresolved).length;
+      h += '<h2>Constraints summary</h2><p>'+(found.length?esc(found.join(', ')):'Nothing found in the data.')+'</p>'+
+        '<p class="note">'+open+' item'+(open===1?'':'s')+' still to check by hand. <button class="link" data-goto="cons">Open the constraints register</button></p>';
+    }
   }
   h += '<h2>Notes</h2><textarea id="notes" rows="4" style="width:100%;font:inherit;padding:6px;border:1px solid var(--line);border-radius:4px">'+esc(site.notes)+'</textarea>';
   $('#p-site').innerHTML = h;
   const rc = $('#recheck'); if(rc) rc.onclick = checkConstraints;
+}
+
+function renderCons(){
+  let h = '<h2>Constraints register</h2>';
+  if(!site.boundary){ $('#p-cons').innerHTML = h+'<div class="empty">Set a site boundary in step 1 first.</div>'; return; }
+  const c = site.constraints;
+  if(c.status==='running') h += '<p class="note">Checking planning data…</p>';
+  if(c.status==='error') h += '<div class="flag bad">'+esc(c.error)+'</div>';
+  if(c.status==='stale') h += '<div class="flag">Boundary changed since the last check. Go to step 1 to check again.</div>';
+  const rows = REGISTER.map(registerRow);
+  const open = rows.filter(x=>x.unresolved).length;
+  h += '<p class="note">Data results come from planning.data.gov.uk. "Not found in data" is not proof of absence. Record your own checks below so nothing stays unavailable. '+(open?open+' still to check.':'Every item has a result.')+'</p>';
+  const cn = councilOf();
+  h += '<ul class="clist reg">';
+  REGISTER.forEach((r,i)=>{
+    const x = rows[i];
+    h += '<li><div class="reg-head"><span class="ds">'+esc(r.label)+'</span><span><b>'+esc(x.status)+'</b>'+badge(x.src)+'</span></div>';
+    if(x.items.length) h += '<ul class="found">'+x.items.map(e=>{
+      const extra=[]; if(e['listed-building-grade']) extra.push('Grade '+e['listed-building-grade']); if(e['flood-risk-level']) extra.push('Zone '+e['flood-risk-level']);
+      return '<li>'+esc(e.name||e.reference||'unnamed')+(extra.length?' ('+esc(extra.join(', '))+')':'')+badge(entQuality(e))+' <a href="https://www.planning.data.gov.uk/entity/'+e.entity+'" target="_blank" rel="noopener">record</a></li>';
+    }).join('')+'</ul>';
+    if(r.manual) h += '<p class="note">'+esc(r.manual)+'</p>';
+    if(r.partial && x.data==='unavailable') h += '<p class="note">None in the data, but tree data is incomplete. Check with the council.</p>';
+    if(r.key==='owner' && site.plots.length) h += '<p class="note">INSPIRE IDs: '+esc(site.plots.map(id=>(site.plotGeom[id]||{}).ref||id).join(', '))+'. Use the Land Registry map search to find the title number.</p>';
+    const links = [];
+    (r.links||[]).forEach(k=>links.push(LINKS[k]));
+    if(r.council && cn && COUNCIL[cn][r.council]) links.push(COUNCIL[cn][r.council]);
+    if(links.length) h += '<p class="note">'+links.map(l=>'<a href="'+l[1]+'" target="_blank" rel="noopener">'+esc(l[0])+'</a>').join(' · ')+'</p>';
+    h += '<div class="reg-check"><select data-check="'+r.key+'" data-kind="result" aria-label="Your check for '+esc(r.label)+'">'+
+      Object.entries(RESULT_LABEL).map(([k,v])=>'<option value="'+k+'"'+(x.chk.result===k?' selected':'')+'>'+esc(v)+'</option>').join('')+'</select>'+
+      '<input data-check="'+r.key+'" data-kind="note" placeholder="Note or source" value="'+esc(x.chk.note)+'">'+
+      (x.chk.date?'<small class="note">Checked '+new Date(x.chk.date).toLocaleDateString('en-GB')+'</small>':'')+'</div></li>';
+  });
+  h += '</ul>';
+  $('#p-cons').innerHTML = h;
 }
 
 function renderScheme(){
@@ -406,6 +601,7 @@ function renderScheme(){
   h += field('storeys', site.storeys, 'Storeys', 'average across the scheme');
   h += field('efficiency', site.efficiency, 'Efficiency', '% of floor area inside homes. Around 80 to 85 for flats, 100 for houses.');
   h += '<h2>Result</h2><div class="kv" id="capOut"></div>';
+  h += '<h2>Design checks</h2><div id="designOut"></div><p class="note">Checks against published standards to test the scheme. Not a statement of planning compliance.</p>';
   $('#p-scheme').innerHTML = h;
   updateCapacity();
   $('#preset').onchange = e=>{
@@ -424,11 +620,24 @@ function updateCapacity(){
     ['Footprint', m2(c.footprint)], ['Site coverage', site.area.v?pct(c.coverage):'needs site area'],
     ['Density', site.area.v?Math.round(c.density)+' homes per ha':'needs site area']
   ].map(r=>'<span class="k">'+r[0]+'</span><span class="v">'+r[1]+'</span>').join('');
+  const d = $('#designOut'); if(!d) return;
+  const out = []; let outdoor = 0, unknown = 0;
+  site.units.forEach(u=>{
+    const p = PRESETS.find(x=>x[0]===u.label);
+    if(p && num(u.size)!==null && u.size < p[1]) out.push(['bad', esc(u.label)+': '+u.size+' m² is below the space standard minimum of '+p[1]+' m².']);
+    const m = /(\d)b(\d)p/.exec(u.label||'');
+    if(m) outdoor += (5 + Math.max(0, +m[2]-2)) * (num(u.count)||0); else if(num(u.count)) unknown += num(u.count);
+  });
+  if(site.units.length) out.push(['', 'Private outdoor space needed (London Plan D6): at least '+outdoor+' m² in total'+(unknown?', plus '+unknown+' home'+(unknown>1?'s':'')+' of unknown size':'')+'.']);
+  if(c.coverage!==null && c.coverage>1) out.push(['bad','The footprint is larger than the site. Add storeys or reduce homes.']);
+  else if(c.coverage!==null && c.coverage>0.6) out.push(['','Site coverage is over 60%. Check there is room for outdoor space, bins, bikes and access.']);
+  if(site.units.some(u=>/^Flat/.test(u.label)) && num(site.storeys.v)>=3) out.push(['', 'Flats on 3 or more storeys: consider lift access and second staircase rules for taller buildings.']);
+  d.innerHTML = out.length ? out.map(x=>'<div class="flag '+x[0]+'">'+x[1]+'</div>').join('') : '<p class="note">Add home types to see checks.</p>';
 }
 
 function renderViab(){
   let h = '<h2>Sales values</h2>';
-  if(!site.units.length) h += '<div class="empty">Add home types in step 2 first.</div>';
+  if(!site.units.length) h += '<div class="empty">Add home types in step 3 first.</div>';
   else {
     h += '<div class="twrap"><table><thead><tr><th>Type</th><th>Number</th><th>Price each £</th></tr></thead><tbody>';
     site.units.forEach((u,i)=>{
@@ -492,13 +701,18 @@ function renderSaved(){
   $('#jsonOut').onclick = ()=>download('sites-backup-'+new Date().toISOString().slice(0,10)+'.json', JSON.stringify(loadAll(),null,1), 'application/json');
   $('#jsonIn').onclick = ()=>$('#importFile').click();
 }
-function renderAll(){ $('#siteName').value = site.name; renderSite(); renderScheme(); renderViab(); renderSaved(); }
+function renderAll(){ $('#siteName').value = site.name; renderSite(); renderCons(); renderScheme(); renderViab(); renderSaved(); }
 
 // ===== Input handling (updates outputs without re-rendering, so focus is kept) =====
 document.addEventListener('input', e=>{
   const t = e.target;
   if(t.id==='siteName'){ site.name = t.value; markDirty(); return; }
   if(t.id==='notes'){ site.notes = t.value; markDirty(); return; }
+  if(t.dataset.check){
+    const k = t.dataset.check; site.checks[k] = site.checks[k] || {result:'', note:'', date:''};
+    site.checks[k][t.dataset.kind] = t.value; site.checks[k].date = new Date().toISOString();
+    markDirty(); if(t.dataset.kind==='result'){ renderCons(); renderSite(); } return;
+  }
   if(t.dataset.path){
     const parts = t.dataset.path.split('.');
     const obj = parts.length===2 ? site[parts[0]][parts[1]] : site[parts[0]];
@@ -519,11 +733,13 @@ document.addEventListener('input', e=>{
   }
 });
 // Re-render the other tab's copy of units when switching, so labels and counts stay in step
-document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>{
-  document.querySelectorAll('nav.tabs button').forEach(x=>x.setAttribute('aria-selected', x===b));
-  document.querySelectorAll('section.panel').forEach(p=>p.classList.toggle('on', p.id==='p-'+b.dataset.tab));
-  if(b.dataset.tab==='viab') renderViab(); if(b.dataset.tab==='scheme') renderScheme(); if(b.dataset.tab==='saved') renderSaved();
-});
+function showTab(tab){
+  document.querySelectorAll('nav.tabs button').forEach(x=>x.setAttribute('aria-selected', x.dataset.tab===tab));
+  document.querySelectorAll('section.panel').forEach(p=>p.classList.toggle('on', p.id==='p-'+tab));
+  ({viab:renderViab, scheme:renderScheme, saved:renderSaved, cons:renderCons, site:renderSite})[tab]();
+}
+document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+document.addEventListener('click', e=>{ const g = e.target.closest('[data-goto]'); if(g) showTab(g.dataset.goto); });
 
 // ===== Storage =====
 function loadAll(){ try{ return JSON.parse(localStorage.getItem(STORE)||'[]'); }catch{ return []; } }
@@ -563,15 +779,18 @@ function download(name, text, type){
 const NOTION_TAG = {'conservation-area':'Conservation area','flood-risk-zone':'Flood zone','tree-preservation-zone':'TPO','article-4-direction-area':'Article 4'};
 function toCSV(list){
   const q = v=>'"'+String(v??'').replace(/"/g,'""')+'"';
-  const rows = [['Site','Status','Borough','Site area m2','Est homes','Constraints','Notes']];
+  const rows = [['Site','Status','Borough','Area','Site area m2','Est homes','Constraints','Notes']];
   list.forEach(s=>{
-    const c = s.constraints||{items:[],nearby:[]};
+    const c = s.constraints||{items:[],nearby:[]}, ch = s.checks||{};
     const tags = new Set();
     (c.items||[]).forEach(e=>{ if(NOTION_TAG[e.dataset]) tags.add(NOTION_TAG[e.dataset]); if(e.dataset==='listed-building') tags.add('Listed building nearby'); });
     (c.nearby||[]).forEach(e=>{ if(e.dataset==='listed-building') tags.add('Listed building nearby'); });
+    if((ch.mol||{}).result==='applies') tags.add('Metropolitan Open Land');
+    if((ch.tpo||{}).result==='applies') tags.add('TPO');
     const homes = (s.units||[]).reduce((a,u)=>a+(Number(u.count)||0),0);
     const b = (s.borough||'').includes('Hounslow')?'Hounslow':(s.borough||'').includes('Richmond')?'Richmond':'';
-    rows.push([s.name||'Unnamed site','Assessed',b, s.area&&s.area.v?Math.round(s.area.v):'', homes||'', [...tags].join(','), s.notes||'']);
+    const pc = Object.values(s.plotGeom||{}).map(p=>p.address&&p.address.town).filter(Boolean)[0]||'';
+    rows.push([s.name||'Unnamed site','Assessed',b, pc, s.area&&s.area.v?Math.round(s.area.v):'', homes||'', [...tags].join(','), s.notes||'']);
   });
   return rows.map(r=>r.map(q).join(',')).join('\r\n');
 }
@@ -580,10 +799,13 @@ function toCSV(list){
 function buildReport(){
   const {c, r, missing, sens} = viabResult(); const k = site.constraints;
   let h = '<h1>'+esc(site.name||'Unnamed site')+'</h1><p>'+esc(site.borough||'Borough not checked')+'. Prepared '+new Date().toLocaleDateString('en-GB')+'. Concept appraisal only: not a planning view, valuation or cost plan.</p>';
-  h += '<h2>Site</h2><p>Area: '+m2(num(site.area.v))+' ('+SRC_LABEL[site.area.src]+').</p>';
-  h += '<h2>Constraints in the boundary</h2>'+((k.items||[]).length?'<ul>'+k.items.map(e=>'<li>'+esc(DATASETS[e.dataset]||e.dataset)+': '+esc(e.name||e.reference)+' ('+SRC_LABEL[entQuality(e)]+')</li>').join('')+'</ul>':'<p>'+(k.status==='done'?'None found in the data. Not proof of absence.':'Not checked.')+'</p>');
-  if((k.nearby||[]).length) h += '<h2>Within 50 m</h2><ul>'+k.nearby.map(e=>'<li>'+esc(DATASETS[e.dataset]||e.dataset)+': '+esc(e.name||e.reference)+'</li>').join('')+'</ul>';
-  h += '<p>Unavailable, check by hand: tree preservation orders, planning history, ownership.</p>';
+  const addrs = (site.plots||[]).map(id=>(site.plotGeom[id]||{}).address).filter(a=>a&&(a.text||a.postcode)).map(a=>[a.text,a.postcode].filter(Boolean).join(', '));
+  h += '<h2>Site</h2><p>'+(addrs.length?'Address (nearest, from OpenStreetMap): '+esc(addrs.join('; '))+'.<br>':'')+'Area: '+m2(num(site.area.v))+' ('+SRC_LABEL[site.area.src]+').</p>';
+  h += '<h2>Constraints register</h2><table><tr><th>Item</th><th>Result</th><th>Source</th><th>Detail or note</th></tr>'+REGISTER.map(r=>{
+    const x = registerRow(r);
+    const detail = x.items.map(e=>e.name||e.reference).join('; ') + (x.chk.note?(x.items.length?'. ':'')+x.chk.note:'');
+    return '<tr><td>'+esc(r.label)+'</td><td>'+esc(x.status)+'</td><td>'+SRC_LABEL[x.src]+'</td><td style="white-space:normal;text-align:left">'+esc(detail)+'</td></tr>';
+  }).join('')+'</table><p>"Not found in data" is not proof of absence.</p>';
   h += '<h2>Scheme tested</h2><table><tr><th>Type</th><th>Size m²</th><th>Number</th><th>Price each</th></tr>'+site.units.map(u=>'<tr><td>'+esc(u.label)+'</td><td>'+(u.size??'')+'</td><td>'+(u.count??'')+'</td><td>'+gbp(num(u.price))+'</td></tr>').join('')+'</table>';
   h += '<p>'+c.homes+' homes, GIA '+m2(c.gia)+', '+site.storeys.v+' storeys, coverage '+pct(c.coverage)+'.</p>';
   h += '<h2>Viability</h2>'+(missing.length?'<p><b>Incomplete.</b> Missing: '+esc(missing.join(', '))+'.</p>':'');
@@ -598,6 +820,7 @@ $('#printBtn').onclick = ()=>{ buildReport(); window.print(); };
 window.addEventListener('beforeprint', buildReport);
 
 renderAll();
+loadPlots();
 </script>
 </body>
 </html>
