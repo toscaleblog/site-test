@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Site tool: risk test</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root { --ink:#1f2a33; --muted:#5d6b75; --line:#d5dde2; --bg:#f7f9fa; --pass:#1d7a46; --warn:#a86400; --fail:#b3261e; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--ink); background:var(--bg); }
+  main { max-width:760px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:1.5rem; margin:0 0 4px; }
+  h2 { font-size:1.05rem; margin:28px 0 8px; }
+  p.lead { color:var(--muted); margin:0 0 16px; }
+  button { font:inherit; padding:10px 16px; border:1px solid var(--ink); background:var(--ink); color:#fff; border-radius:6px; cursor:pointer; }
+  button.secondary { background:#fff; color:var(--ink); }
+  button:focus-visible { outline:3px solid #6aa0c8; outline-offset:2px; }
+  .table-wrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--line); }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; font-size:.95rem; }
+  th { background:#eef2f4; font-weight:600; }
+  .pass { color:var(--pass); font-weight:600; }
+  .warn { color:var(--warn); font-weight:600; }
+  .fail { color:var(--fail); font-weight:600; }
+  .wait { color:var(--muted); }
+  #map { height:220px; border:1px solid var(--line); margin-top:8px; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; margin:16px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Site tool: risk test</h1>
+  <p class="lead">Checks that the map and planning data work from this page before the full tool is built. Takes about 30 seconds. Then copy the results and paste them into the chat.</p>
+
+  <div class="actions">
+    <button id="run">Run tests</button>
+    <button id="copy" class="secondary" disabled>Copy results</button>
+  </div>
+
+  <h2>Basics</h2>
+  <div class="table-wrap"><table id="basics"><thead><tr><th>Test</th><th>Result</th></tr></thead><tbody></tbody></table></div>
+
+  <h2>Planning data by borough</h2>
+  <div class="table-wrap"><table id="coverage"><thead><tr><th>Dataset</th><th>Hounslow</th><th>Richmond</th></tr></thead><tbody></tbody></table></div>
+
+  <h2>Map tiles</h2>
+  <div id="map" aria-label="Test map of Feltham"></div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@7.4.0/turf.min.js"></script>
+<script>
+const API = "https://www.planning.data.gov.uk/entity.json";
+const LPAS = { Hounslow: 626214, Richmond: 626218 };
+const DATASETS = [
+  ["conservation-area", "Conservation areas"],
+  ["listed-building", "Listed buildings"],
+  ["article-4-direction-area", "Article 4 areas"],
+  ["tree-preservation-zone", "Tree preservation zones"],
+  ["flood-risk-zone", "Flood risk zones"],
+  ["green-belt", "Green belt"],
+  ["brownfield-land", "Brownfield land"],
+  ["planning-application", "Planning applications"]
+];
+// Small test boundary in Feltham
+const FELTHAM_WKT = "POLYGON((-0.411 51.4455,-0.408 51.4455,-0.408 51.4475,-0.411 51.4475,-0.411 51.4455))";
+const results = [];
+
+function row(tableId, cells) {
+  const tr = document.createElement("tr");
+  cells.forEach(c => { const td = document.createElement("td"); td.innerHTML = c; tr.appendChild(td); });
+  document.querySelector("#" + tableId + " tbody").appendChild(tr);
+  return tr;
+}
+function tag(cls, text) { return '<span class="' + cls + '">' + text + '</span>'; }
+
+async function getJSON(params, ms = 25000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const r = await fetch(API + "?" + params.toString(), { signal: ctrl.signal });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+function explain(e) {
+  if (e.name === "AbortError") return "timed out";
+  if (e instanceof TypeError) return "blocked by the browser (likely a cross-site restriction)";
+  return e.message;
+}
+
+async function basic(label, fn) {
+  const tr = row("basics", [label, tag("wait", "running")]);
+  try {
+    const msg = await fn();
+    tr.cells[1].innerHTML = tag("pass", "Pass") + (msg ? " " + msg : "");
+    results.push(label + ": PASS " + (msg || ""));
+    return true;
+  } catch (e) {
+    const m = explain(e);
+    tr.cells[1].innerHTML = tag("fail", "Fail") + " " + m;
+    results.push(label + ": FAIL " + m);
+    return false;
+  }
+}
+
+async function coverage(slug, label) {
+  const tr = row("coverage", [label, tag("wait", "checking"), tag("wait", "checking")]);
+  const line = [label];
+  for (const [i, [name, id]] of Object.entries(Object.entries(LPAS))) {
+    const p = new URLSearchParams();
+    p.append("dataset", slug);
+    p.append("geometry_entity", id);
+    p.append("geometry_relation", "intersects");
+    p.append("field", "entity");
+    p.append("limit", "1");
+    let cell;
+    try {
+      const d = await getJSON(p);
+      const n = typeof d.count === "number" ? d.count : (d.entities || []).length;
+      cell = n > 0 ? tag("pass", n + " found") : tag("warn", "none, will show as unavailable");
+      line.push(name + "=" + n);
+    } catch (e) {
+      cell = tag("fail", "failed: " + explain(e));
+      line.push(name + "=ERROR(" + explain(e) + ")");
+    }
+    tr.cells[Number(i) + 1].innerHTML = cell;
+  }
+  results.push(line.join(" | "));
+}
+
+function testMap() {
+  return new Promise((resolve, reject) => {
+    const map = L.map("map").setView([51.4466, -0.4096], 16);
+    let loaded = 0, errors = 0;
+    const layer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19, attribution: "&copy; OpenStreetMap contributors"
+    }).addTo(map);
+    layer.on("tileload", () => { loaded++; });
+    layer.on("tileerror", () => { errors++; });
+    L.polygon([[51.4455,-0.411],[51.4455,-0.408],[51.4475,-0.408],[51.4475,-0.411]]).addTo(map);
+    setTimeout(() => loaded > 0 ? resolve(loaded + " tiles loaded") : reject(new Error(errors + " tile errors, none loaded")), 8000);
+  });
+}
+
+document.getElementById("run").addEventListener("click", async (ev) => {
+  ev.target.disabled = true;
+  document.querySelectorAll("tbody").forEach(b => b.innerHTML = "");
+  results.length = 0;
+  results.push("Browser: " + navigator.userAgent);
+  results.push("Page: " + location.href);
+
+  await basic("Map library loads", async () => { if (!window.L) throw new Error("Leaflet missing"); return "Leaflet " + L.version; });
+  await basic("Measuring library loads", async () => {
+    if (!window.turf) throw new Error("Turf missing");
+    const a = turf.area(turf.polygon([[[-0.411,51.4455],[-0.408,51.4455],[-0.408,51.4475],[-0.411,51.4475],[-0.411,51.4455]]]));
+    return "test boundary " + Math.round(a) + " m²";
+  });
+  await basic("Map tiles load", testMap);
+  const ok = await basic("Planning data reachable from this page", async () => {
+    const p = new URLSearchParams({ dataset: "local-planning-authority", limit: "1", field: "name" });
+    const d = await getJSON(p);
+    if (!d.entities) throw new Error("unexpected response");
+    return "";
+  });
+  if (ok) {
+    await basic("Boundary check works (Feltham test site)", async () => {
+      const p = new URLSearchParams();
+      DATASETS.forEach(([s]) => p.append("dataset", s));
+      p.append("geometry", FELTHAM_WKT);
+      p.append("geometry_relation", "intersects");
+      p.append("field", "dataset"); p.append("field", "name");
+      p.append("limit", "50");
+      const d = await getJSON(p);
+      const names = (d.entities || []).map(e => e.dataset + ": " + e.name);
+      return names.length ? names.length + " hits (" + names.slice(0, 5).join("; ") + ")" : "0 hits, query ran fine";
+    });
+    for (const [slug, label] of DATASETS) await coverage(slug, label);
+  } else {
+    row("coverage", ["Skipped", "planning data unreachable", ""]);
+  }
+
+  ev.target.disabled = false;
+  document.getElementById("copy").disabled = false;
+});
+
+document.getElementById("copy").addEventListener("click", async () => {
+  const text = results.join("\n");
+  try { await navigator.clipboard.writeText(text); document.getElementById("copy").textContent = "Copied"; }
+  catch { prompt("Copy these results:", text); }
+});
+</script>
+</body>
+</html>
