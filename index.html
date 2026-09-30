@@ -3,193 +3,601 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Site tool: risk test</title>
+<title>Site appraisal</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@geoman-io/leaflet-geoman-free@2.20.2/dist/leaflet-geoman.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { --ink:#1f2a33; --muted:#5d6b75; --line:#d5dde2; --bg:#f7f9fa; --pass:#1d7a46; --warn:#a86400; --fail:#b3261e; }
-  * { box-sizing:border-box; }
-  body { margin:0; font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--ink); background:var(--bg); }
-  main { max-width:760px; margin:0 auto; padding:24px 16px 48px; }
-  h1 { font-size:1.5rem; margin:0 0 4px; }
-  h2 { font-size:1.05rem; margin:28px 0 8px; }
-  p.lead { color:var(--muted); margin:0 0 16px; }
-  button { font:inherit; padding:10px 16px; border:1px solid var(--ink); background:var(--ink); color:#fff; border-radius:6px; cursor:pointer; }
-  button.secondary { background:#fff; color:var(--ink); }
-  button:focus-visible { outline:3px solid #6aa0c8; outline-offset:2px; }
-  .table-wrap { overflow-x:auto; }
-  table { width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--line); }
-  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; font-size:.95rem; }
-  th { background:#eef2f4; font-weight:600; }
-  .pass { color:var(--pass); font-weight:600; }
-  .warn { color:var(--warn); font-weight:600; }
-  .fail { color:var(--fail); font-weight:600; }
-  .wait { color:var(--muted); }
-  #map { height:220px; border:1px solid var(--line); margin-top:8px; }
-  .actions { display:flex; gap:8px; flex-wrap:wrap; margin:16px 0; }
+:root{--ink:#1e2d36;--muted:#5b6a73;--line:#d3dcdf;--bg:#eef2f1;--paper:#fff;--accent:#2b5d6b;--ver:#1d7a46;--est:#946200;--usr:#2b5d6b;--una:#8f3a2f;--mea:#5a4a8a}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font:15px/1.5 "Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--paper);border-bottom:1px solid var(--line);flex-wrap:wrap}
+header h1{font-size:1.05rem;margin:0;font-weight:700}
+header input#siteName{font:inherit;font-weight:600;border:1px solid transparent;border-radius:4px;padding:4px 6px;min-width:0;flex:1 1 180px;max-width:360px}
+header input#siteName:hover,header input#siteName:focus{border-color:var(--line)}
+header .spacer{flex:1}
+button,.btn{font:inherit;font-size:.9rem;padding:7px 12px;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:5px;cursor:pointer}
+button.ghost{background:var(--paper);color:var(--ink);border-color:var(--line)}
+button.link{background:none;border:none;color:var(--accent);padding:0;text-decoration:underline}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #7fb0c4;outline-offset:1px}
+.app{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,1fr);height:calc(100% - 55px)}
+#mapWrap{position:relative;min-height:320px}
+#map{position:absolute;inset:0}
+.mapbar{position:absolute;z-index:500;top:10px;left:56px;right:10px;display:flex;gap:6px;flex-wrap:wrap}
+.mapbar input{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:5px;width:130px}
+.mapbar .msg{background:var(--paper);padding:5px 8px;border-radius:5px;font-size:.85rem;border:1px solid var(--line)}
+aside{background:var(--paper);border-left:1px solid var(--line);overflow-y:auto;display:flex;flex-direction:column}
+nav.tabs{display:flex;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--paper);z-index:2}
+nav.tabs button{flex:1;background:none;color:var(--muted);border:none;border-bottom:3px solid transparent;border-radius:0;padding:12px 6px;font-weight:600}
+nav.tabs button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--accent)}
+section.panel{padding:16px;display:none}
+section.panel.on{display:block}
+h2{font-size:1rem;margin:18px 0 8px}
+h2:first-child{margin-top:0}
+p.note{color:var(--muted);font-size:.85rem;margin:6px 0}
+.empty{border:1px dashed var(--line);border-radius:6px;padding:14px;color:var(--muted)}
+.kv{display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin:8px 0}
+.kv .k{color:var(--muted)}
+.kv .v{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.field{display:grid;grid-template-columns:1fr 120px;gap:4px 10px;align-items:center;padding:6px 0;border-bottom:1px solid #eef1f2}
+.field label{font-size:.9rem}
+.field .unit{display:block;font-size:.78rem;color:var(--muted)}
+.field input{font:inherit;width:100%;padding:5px 7px;border:1px solid var(--line);border-radius:4px;text-align:right;font-variant-numeric:tabular-nums}
+.src{display:inline-block;font-size:.72rem;padding:0 6px;border-radius:9px;border:1px solid currentColor;margin-left:6px;white-space:nowrap;vertical-align:1px}
+.s-verified{color:var(--ver)}.s-estimate{color:var(--est)}.s-user{color:var(--usr)}.s-unavailable{color:var(--una)}.s-measured{color:var(--mea)}.s-secondary{color:var(--est)}
+.clist{list-style:none;margin:0;padding:0}
+.clist li{padding:8px 0;border-bottom:1px solid #eef1f2}
+.clist .ds{font-weight:600}
+.clist a{color:var(--accent)}
+.flag{background:#fbf3e4;border:1px solid #ecd6a8;border-radius:6px;padding:10px 12px;margin:10px 0;font-size:.88rem}
+.flag.bad{background:#f9ebe9;border-color:#e4bdb7}
+.flag.good{background:#e8f4ec;border-color:#b9dcc5}
+.twrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.88rem;font-variant-numeric:tabular-nums}
+th,td{padding:6px 7px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{background:#f3f6f6;font-weight:600}
+td input,td select{font:inherit;font-size:.88rem;width:100%;min-width:64px;padding:4px 5px;border:1px solid var(--line);border-radius:4px;text-align:right}
+td input.txt{text-align:left;min-width:110px}
+td .src{display:block;width:fit-content;margin:3px 0 0 auto}
+.sens td.ok{background:#e3f1e8}.sens td.no{background:#f6e3e0}.sens td.base{font-weight:700;outline:2px solid var(--ink);outline-offset:-2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
+select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:5px}
+.saved li{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #eef1f2}
+.saved li span{flex:1}
+#report{display:none}
+@media (max-width:860px){.app{grid-template-columns:1fr;height:auto}#mapWrap{height:55vh}aside{border-left:none;border-top:1px solid var(--line)}}
+@media print{
+  body{background:#fff}
+  header,.app{display:none!important}
+  #report{display:block;font-size:11pt;color:#000}
+  #report h1{font-size:16pt;margin:0 0 4px}#report h2{font-size:12pt;margin:14px 0 6px}
+  #report table{font-size:9.5pt}
+}
 </style>
 </head>
 <body>
-<main>
-  <h1>Site tool: risk test</h1>
-  <p class="lead">Checks that the map and planning data work from this page before the full tool is built. Takes about 30 seconds. Then copy the results and paste them into the chat.</p>
-
-  <div class="actions">
-    <button id="run">Run tests</button>
-    <button id="copy" class="secondary" disabled>Copy results</button>
+<header>
+  <h1>Site appraisal</h1>
+  <input id="siteName" aria-label="Site name" placeholder="Name this site">
+  <span class="spacer"></span>
+  <button class="ghost" id="newBtn">New site</button>
+  <button class="ghost" id="printBtn">Print report</button>
+  <button id="saveBtn">Save</button>
+</header>
+<div class="app">
+  <div id="mapWrap">
+    <div id="map" aria-label="Map"></div>
+    <div class="mapbar">
+      <input id="pc" placeholder="Postcode" aria-label="Postcode">
+      <button class="ghost" id="pcBtn">Go</button>
+      <button class="ghost" id="bfBtn">Show brownfield sites here</button>
+      <span class="msg" id="mapMsg" hidden></span>
+    </div>
   </div>
-
-  <h2>Basics</h2>
-  <div class="table-wrap"><table id="basics"><thead><tr><th>Test</th><th>Result</th></tr></thead><tbody></tbody></table></div>
-
-  <h2>Planning data by borough</h2>
-  <div class="table-wrap"><table id="coverage"><thead><tr><th>Dataset</th><th>Hounslow</th><th>Richmond</th></tr></thead><tbody></tbody></table></div>
-
-  <h2>Map tiles</h2>
-  <div id="map" aria-label="Test map of Feltham"></div>
-</main>
+  <aside>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="site" aria-selected="true">1 Site</button>
+      <button role="tab" data-tab="scheme" aria-selected="false">2 Scheme</button>
+      <button role="tab" data-tab="viab" aria-selected="false">3 Viability</button>
+      <button role="tab" data-tab="saved" aria-selected="false">Saved</button>
+    </nav>
+    <section class="panel on" id="p-site"></section>
+    <section class="panel" id="p-scheme"></section>
+    <section class="panel" id="p-viab"></section>
+    <section class="panel" id="p-saved"></section>
+  </aside>
+</div>
+<div id="report"></div>
+<input type="file" id="importFile" accept="application/json" hidden>
 
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@geoman-io/leaflet-geoman-free@2.20.2/dist/leaflet-geoman.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7.4.0/turf.min.js"></script>
 <script>
-const API = "https://www.planning.data.gov.uk/entity.json";
-const LPAS = { Hounslow: 626214, Richmond: 626218 };
-const DATASETS = [
-  ["conservation-area", "Conservation areas"],
-  ["listed-building", "Listed buildings"],
-  ["article-4-direction-area", "Article 4 areas"],
-  ["tree-preservation-zone", "Tree preservation zones"],
-  ["flood-risk-zone", "Flood risk zones"],
-  ["green-belt", "Green belt"],
-  ["brownfield-land", "Brownfield land"],
-  ["planning-application", "Planning applications"]
+// ===== Pure calculations (no language model, no guesses) =====
+function num(x){ return (x===null||x===undefined||x===''||isNaN(x)) ? null : Number(x); }
+
+function calcCapacity(units, efficiencyPct, storeys, siteArea){
+  const homes = units.reduce((s,u)=>s+(num(u.count)||0),0);
+  const homeArea = units.reduce((s,u)=>s+(num(u.size)||0)*(num(u.count)||0),0);
+  const eff = (num(efficiencyPct)||0)/100;
+  const gia = eff>0 ? homeArea/eff : null;
+  const st = num(storeys);
+  const footprint = (gia!==null && st>0) ? gia/st : null;
+  const coverage = (footprint!==null && siteArea>0) ? footprint/siteArea : null;
+  const density = siteArea>0 ? homes/(siteArea/10000) : null;
+  return {homes, homeArea, gia, footprint, coverage, density};
+}
+
+function calcViability(cap, units, v, f){
+  // f: {gdv:1, build:1} factors for sensitivity
+  f = f || {gdv:1, build:1};
+  const g = k => num(v[k] && v[k].v) || 0;
+  const gdv = units.reduce((s,u)=>s+(num(u.price)||0)*(num(u.count)||0),0) * f.gdv;
+  const build = (cap.gia||0) * g('buildCost') * f.build;
+  const externals = build * g('externals')/100;
+  const contingency = (build+externals) * g('contingency')/100;
+  const fees = (build+externals) * g('fees')/100;
+  const construction = build+externals+contingency+fees;
+  const levies = g('cil') + g('s106');
+  const devCosts = construction + levies;
+  const r = g('rate')/100, bm = g('buildMonths'), sm = g('saleMonths');
+  const devFinance = devCosts * r * (0.5*bm/12 + sm/12);
+  const sales = gdv * g('salesCosts')/100;
+  const T = (bm+sm)/12;
+  const land = g('asking'), purchase = g('purchase');
+  const landFinance = (land+purchase) * r * T;
+  const totalCost = land + purchase + landFinance + devCosts + devFinance + sales;
+  const profit = gdv - totalCost;
+  const profitPct = gdv>0 ? profit/gdv : null;
+  const target = gdv * g('profit')/100;
+  const X = gdv - target - devCosts - devFinance - sales;
+  const rlv = X/(1+r*T) - purchase;
+  const headroom = rlv - land;
+  return {gdv, build, externals, contingency, fees, construction, levies, devFinance, sales,
+          land, purchase, landFinance, totalCost, profit, profitPct, target, rlv, headroom};
+}
+
+function missingInputs(units, v){
+  const m = [];
+  if(!units.length) m.push('at least one home type');
+  units.forEach((u,i)=>{ if(num(u.price)===null) m.push('sale price for '+(u.label||('row '+(i+1)))); });
+  ['buildCost','cil','s106','asking','purchase'].forEach(k=>{ if(!v[k] || num(v[k].v)===null) m.push(VLABEL[k]); });
+  return m;
+}
+const VLABEL = {buildCost:'build cost', cil:'CIL', s106:'S106', asking:'asking price', purchase:'purchase costs'};
+// ===== Rules =====
+// Every value carries a source: verified (official data), measured (from your boundary),
+// estimate (a starting default), user (you typed it), unavailable (not known).
+// Nothing is looked up that isn't shown with its source. Capacity is a design test, not a planning view.
+
+const API = 'https://www.planning.data.gov.uk/entity.json';
+const STORE = 's2s-sites-v1';
+const SRC_LABEL = {verified:'verified data', secondary:'secondary source', measured:'measured', estimate:'estimate', user:'your input', unavailable:'unavailable'};
+const DATASETS = {
+  'conservation-area':'Conservation area',
+  'listed-building':'Listed building',
+  'scheduled-monument':'Scheduled monument',
+  'article-4-direction-area':'Article 4 direction',
+  'tree-preservation-zone':'Tree preservation zone',
+  'flood-risk-zone':'Flood risk zone',
+  'green-belt':'Green belt',
+  'brownfield-land':'Brownfield register'
+};
+const NEARBY = ['listed-building','conservation-area','scheduled-monument'];
+const ALWAYS_CHECK = {
+  'tree-preservation-zone':'Tree data is incomplete for both boroughs. Check the council map for TPOs.',
+  'planning':'Planning history is not in the data. Search the council planning portal for this address.'
+};
+const PRESETS = [
+  ['Flat 1b2p',50],['Flat 2b3p',61],['Flat 2b4p',70],['Flat 3b5p',86],
+  ['House 2b4p, 2 storey',79],['House 3b5p, 2 storey',93],['House 4b6p, 2 storey',106]
 ];
-// Small test boundary in Feltham
-const FELTHAM_WKT = "POLYGON((-0.411 51.4455,-0.408 51.4455,-0.408 51.4475,-0.411 51.4475,-0.411 51.4455))";
-const results = [];
+const VFIELDS = [
+  ['Costs'],
+  ['buildCost','Build cost','£ per m² GIA',null],
+  ['externals','Externals','% of build cost',10],
+  ['contingency','Contingency','% of build and externals',5],
+  ['fees','Professional fees','% of build and externals',12],
+  ['cil','CIL (borough and Mayoral)','£ total, from the charging schedule',null],
+  ['s106','S106 and affordable contribution','£ total, 0 if none',null],
+  ['salesCosts','Sales and legal on sale','% of sales value',3],
+  ['Finance and return'],
+  ['rate','Finance rate','% a year',8],
+  ['buildMonths','Build period','months',12],
+  ['saleMonths','Sales period','months',6],
+  ['profit','Target profit','% of sales value',20],
+  ['Land'],
+  ['asking','Asking price','£',null],
+  ['purchase','Purchase costs','£, SDLT and legal',null]
+];
 
-function row(tableId, cells) {
-  const tr = document.createElement("tr");
-  cells.forEach(c => { const td = document.createElement("td"); td.innerHTML = c; tr.appendChild(td); });
-  document.querySelector("#" + tableId + " tbody").appendChild(tr);
-  return tr;
-}
-function tag(cls, text) { return '<span class="' + cls + '">' + text + '</span>'; }
+// ===== State =====
+let site = blankSite();
+let boundaryLayer = null, bfLayer = null, dirty = false;
 
-async function getJSON(params, ms = 25000) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), ms);
-  try {
-    const r = await fetch(API + "?" + params.toString(), { signal: ctrl.signal });
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    return await r.json();
-  } finally { clearTimeout(t); }
-}
-function explain(e) {
-  if (e.name === "AbortError") return "timed out";
-  if (e instanceof TypeError) return "blocked by the browser (likely a cross-site restriction)";
-  return e.message;
-}
-
-async function basic(label, fn) {
-  const tr = row("basics", [label, tag("wait", "running")]);
-  try {
-    const msg = await fn();
-    tr.cells[1].innerHTML = tag("pass", "Pass") + (msg ? " " + msg : "");
-    results.push(label + ": PASS " + (msg || ""));
-    return true;
-  } catch (e) {
-    const m = explain(e);
-    tr.cells[1].innerHTML = tag("fail", "Fail") + " " + m;
-    results.push(label + ": FAIL " + m);
-    return false;
-  }
+function blankSite(){
+  const via = {};
+  VFIELDS.forEach(f=>{ if(f.length>1) via[f[0]] = {v:f[3], src: f[3]===null?'unavailable':'estimate'}; });
+  return {id:'s'+Date.now(), name:'', notes:'', boundary:null,
+    area:{v:null, src:'unavailable'}, borough:null,
+    constraints:{status:'none', items:[], nearby:[], checked:[], at:null, error:null},
+    units:[], storeys:{v:3,src:'estimate'}, efficiency:{v:85,src:'estimate'}, via};
 }
 
-async function coverage(slug, label) {
-  const tr = row("coverage", [label, tag("wait", "checking"), tag("wait", "checking")]);
-  const line = [label];
-  for (const [i, [name, id]] of Object.entries(Object.entries(LPAS))) {
-    const p = new URLSearchParams();
-    p.append("dataset", slug);
-    p.append("geometry_entity", id);
-    p.append("geometry_relation", "intersects");
-    p.append("field", "entity");
-    p.append("limit", "1");
-    let cell;
-    try {
-      const d = await getJSON(p);
-      const n = typeof d.count === "number" ? d.count : (d.entities || []).length;
-      cell = n > 0 ? tag("pass", n + " found") : tag("warn", "none, will show as unavailable");
-      line.push(name + "=" + n);
-    } catch (e) {
-      cell = tag("fail", "failed: " + explain(e));
-      line.push(name + "=ERROR(" + explain(e) + ")");
-    }
-    tr.cells[Number(i) + 1].innerHTML = cell;
-  }
-  results.push(line.join(" | "));
+// ===== Helpers =====
+const $ = s=>document.querySelector(s);
+const esc = s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const gbp = n=>n===null||n===undefined||isNaN(n)?'unavailable':(n<0?'-':'')+'£'+Math.abs(Math.round(n)).toLocaleString('en-GB');
+const m2 = n=>n===null||isNaN(n)?'unavailable':Math.round(n).toLocaleString('en-GB')+' m²';
+const pct = n=>n===null||isNaN(n)?'unavailable':(n*100).toFixed(1)+'%';
+const badge = s=>'<span class="src s-'+s+'">'+SRC_LABEL[s]+'</span>';
+function markDirty(){ dirty = true; $('#saveBtn').textContent = 'Save*'; }
+function markClean(){ dirty = false; $('#saveBtn').textContent = 'Save'; }
+function mapMsg(t, ms){ const el=$('#mapMsg'); el.textContent=t; el.hidden=!t; if(ms) setTimeout(()=>{ if(el.textContent===t) el.hidden=true; }, ms); }
+
+async function getJSON(url, ms=25000){
+  const ctrl = new AbortController(); const t = setTimeout(()=>ctrl.abort(), ms);
+  try{ const r = await fetch(url,{signal:ctrl.signal}); if(!r.ok) throw new Error('HTTP '+r.status); return await r.json(); }
+  finally{ clearTimeout(t); }
+}
+function toWKT(geom){
+  const ring = geom.coordinates[0].map(c=>c[0].toFixed(6)+' '+c[1].toFixed(6)).join(',');
+  return 'POLYGON(('+ring+'))';
+}
+function params(obj){
+  const p = new URLSearchParams();
+  Object.entries(obj).forEach(([k,v])=>[].concat(v).forEach(x=>p.append(k,x)));
+  return p.toString();
 }
 
-function testMap() {
-  return new Promise((resolve, reject) => {
-    const map = L.map("map").setView([51.4466, -0.4096], 16);
-    let loaded = 0, errors = 0;
-    const layer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19, attribution: "&copy; OpenStreetMap contributors"
-    }).addTo(map);
-    layer.on("tileload", () => { loaded++; });
-    layer.on("tileerror", () => { errors++; });
-    L.polygon([[51.4455,-0.411],[51.4455,-0.408],[51.4475,-0.408],[51.4475,-0.411]]).addTo(map);
-    setTimeout(() => loaded > 0 ? resolve(loaded + " tiles loaded") : reject(new Error(errors + " tile errors, none loaded")), 8000);
-  });
+// ===== Map =====
+const map = L.map('map').setView([51.4466,-0.4096], 15);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'&copy; OpenStreetMap contributors. Planning data: planning.data.gov.uk (OGL)'}).addTo(map);
+map.pm.addControls({position:'topleft', drawMarker:false, drawCircleMarker:false, drawPolyline:false, drawCircle:false, drawText:false,
+  cutPolygon:false, rotateMode:false, dragMode:false, drawRectangle:true, drawPolygon:true, editMode:true, removalMode:true});
+map.pm.setGlobalOptions({pathOptions:{color:'#2b5d6b', weight:3, fillOpacity:.15}});
+
+map.on('pm:create', e=>{
+  if(boundaryLayer){ map.removeLayer(boundaryLayer); }
+  boundaryLayer = e.layer;
+  hookBoundary(boundaryLayer);
+  boundaryChanged(true);
+});
+map.on('pm:remove', e=>{
+  if(e.layer===boundaryLayer){ boundaryLayer=null; site.boundary=null; site.area={v:null,src:'unavailable'};
+    site.constraints={status:'none',items:[],nearby:[],checked:[],at:null,error:null}; site.borough=null; markDirty(); renderAll(); }
+});
+function hookBoundary(layer){ layer.on('pm:edit', ()=>boundaryChanged(false)); }
+function boundaryChanged(runCheck){
+  const gj = boundaryLayer.toGeoJSON().geometry;
+  site.boundary = gj;
+  if(site.area.src!=='user') site.area = {v: Math.round(turf.area(gj)), src:'measured'};
+  if(site.constraints.status==='done') site.constraints.status='stale';
+  markDirty(); renderAll();
+  if(runCheck) checkConstraints();
+}
+function drawSavedBoundary(){
+  if(boundaryLayer){ map.removeLayer(boundaryLayer); boundaryLayer=null; }
+  if(!site.boundary) return;
+  boundaryLayer = L.geoJSON(site.boundary,{style:{color:'#2b5d6b',weight:3,fillOpacity:.15}}).getLayers()[0].addTo(map);
+  hookBoundary(boundaryLayer);
+  map.fitBounds(boundaryLayer.getBounds(),{maxZoom:18, padding:[40,40]});
 }
 
-document.getElementById("run").addEventListener("click", async (ev) => {
-  ev.target.disabled = true;
-  document.querySelectorAll("tbody").forEach(b => b.innerHTML = "");
-  results.length = 0;
-  results.push("Browser: " + navigator.userAgent);
-  results.push("Page: " + location.href);
+// Postcode search (postcodes.io, free)
+$('#pcBtn').onclick = async ()=>{
+  const pc = $('#pc').value.trim(); if(!pc) return;
+  try{ const d = await getJSON('https://api.postcodes.io/postcodes/'+encodeURIComponent(pc), 10000);
+    map.setView([d.result.latitude, d.result.longitude], 17); mapMsg('');
+  }catch(e){ mapMsg('Postcode not found or search unavailable. Pan the map instead.', 5000); }
+};
+$('#pc').addEventListener('keydown', e=>{ if(e.key==='Enter') $('#pcBtn').click(); });
 
-  await basic("Map library loads", async () => { if (!window.L) throw new Error("Leaflet missing"); return "Leaflet " + L.version; });
-  await basic("Measuring library loads", async () => {
-    if (!window.turf) throw new Error("Turf missing");
-    const a = turf.area(turf.polygon([[[-0.411,51.4455],[-0.408,51.4455],[-0.408,51.4475],[-0.411,51.4475],[-0.411,51.4455]]]));
-    return "test boundary " + Math.round(a) + " m²";
-  });
-  await basic("Map tiles load", testMap);
-  const ok = await basic("Planning data reachable from this page", async () => {
-    const p = new URLSearchParams({ dataset: "local-planning-authority", limit: "1", field: "name" });
-    const d = await getJSON(p);
-    if (!d.entities) throw new Error("unexpected response");
-    return "";
-  });
-  if (ok) {
-    await basic("Boundary check works (Feltham test site)", async () => {
-      const p = new URLSearchParams();
-      DATASETS.forEach(([s]) => p.append("dataset", s));
-      p.append("geometry", FELTHAM_WKT);
-      p.append("geometry_relation", "intersects");
-      p.append("field", "dataset"); p.append("field", "name");
-      p.append("limit", "50");
-      const d = await getJSON(p);
-      const names = (d.entities || []).map(e => e.dataset + ": " + e.name);
-      return names.length ? names.length + " hits (" + names.slice(0, 5).join("; ") + ")" : "0 hits, query ran fine";
+// Brownfield sites in view
+$('#bfBtn').onclick = async ()=>{
+  if(map.getZoom()<14){ mapMsg('Zoom in further to load brownfield sites.', 4000); return; }
+  const b = map.getBounds();
+  const poly = {coordinates:[[[b.getWest(),b.getSouth()],[b.getEast(),b.getSouth()],[b.getEast(),b.getNorth()],[b.getWest(),b.getNorth()],[b.getWest(),b.getSouth()]]]};
+  mapMsg('Loading brownfield sites…');
+  try{
+    const d = await getJSON(API+'?'+params({dataset:'brownfield-land', geometry:toWKT(poly), geometry_relation:'intersects', limit:500}));
+    if(bfLayer) map.removeLayer(bfLayer);
+    bfLayer = L.layerGroup().addTo(map);
+    (d.entities||[]).forEach(e=>{
+      const m = /POINT \(([-\d.]+) ([-\d.]+)\)/.exec(e.point||''); if(!m) return;
+      const html = '<b>'+esc(e.name||e['site-address']||'Brownfield site')+'</b><br>'+
+        (e['site-address']?esc(e['site-address'])+'<br>':'')+
+        (e.hectares?'Area: '+esc(e.hectares)+' ha<br>':'')+
+        (e['minimum-net-dwellings']?'Min. homes: '+esc(e['minimum-net-dwellings'])+'<br>':'')+
+        (e['planning-permission-status']?'Permission: '+esc(e['planning-permission-status'])+'<br>':'')+
+        '<a href="https://www.planning.data.gov.uk/entity/'+e.entity+'" target="_blank" rel="noopener">Source record</a>';
+      L.circleMarker([+m[2],+m[1]],{radius:7,color:'#946200',fillColor:'#e0a526',fillOpacity:.8,weight:2}).bindPopup(html).addTo(bfLayer);
     });
-    for (const [slug, label] of DATASETS) await coverage(slug, label);
-  } else {
-    row("coverage", ["Skipped", "planning data unreachable", ""]);
+    mapMsg((d.entities||[]).length+' brownfield sites in view. Register sites are mostly 0.25 ha or 5+ homes.', 6000);
+  }catch(e){ mapMsg('Brownfield data unavailable right now.', 5000); }
+};
+
+// ===== Constraint check =====
+async function checkConstraints(){
+  if(!site.boundary) return;
+  site.constraints = {status:'running', items:[], nearby:[], checked:[], at:null, error:null};
+  renderSite();
+  const wkt = toWKT(site.boundary);
+  const buf = turf.buffer(turf.polygon(site.boundary.coordinates), 50, {units:'meters'});
+  try{
+    const [hit, near, lpa] = await Promise.all([
+      getJSON(API+'?'+params({dataset:Object.keys(DATASETS), geometry:wkt, geometry_relation:'intersects', exclude_field:'geometry', limit:100})),
+      getJSON(API+'?'+params({dataset:NEARBY, geometry:toWKT(buf.geometry), geometry_relation:'intersects', exclude_field:'geometry', limit:100})),
+      getJSON(API+'?'+params({dataset:'local-planning-authority', geometry:wkt, geometry_relation:'intersects', field:['name','entity'], limit:5}))
+    ]);
+    const items = (hit.entities||[]);
+    const ids = new Set(items.map(e=>e.entity));
+    site.constraints = {status:'done', items, nearby:(near.entities||[]).filter(e=>!ids.has(e.entity)),
+      checked:Object.keys(DATASETS), at:new Date().toISOString(), error:null};
+    site.borough = (lpa.entities||[]).map(e=>e.name.replace(/ LPA$/,'')).join(', ') || null;
+  }catch(e){
+    site.constraints = {status:'error', items:[], nearby:[], checked:[], at:null,
+      error: e.name==='AbortError' ? 'The planning data service timed out.' : 'The planning data service could not be reached.'};
   }
+  markDirty(); renderAll();
+}
+function entQuality(e){ return e.quality==='authoritative' ? 'verified' : 'secondary'; }
+function entLine(e){
+  const extra = [];
+  if(e['listed-building-grade']) extra.push('Grade '+e['listed-building-grade']);
+  if(e['flood-risk-level']) extra.push('Zone '+e['flood-risk-level']);
+  return '<li><span class="ds">'+esc(DATASETS[e.dataset]||e.dataset)+'</span>: '+esc(e.name||e.reference||'unnamed')+
+    (extra.length?' ('+esc(extra.join(', '))+')':'')+badge(entQuality(e))+
+    ' <a href="https://www.planning.data.gov.uk/entity/'+e.entity+'" target="_blank" rel="noopener">record</a></li>';
+}
 
-  ev.target.disabled = false;
-  document.getElementById("copy").disabled = false;
+// ===== Rendering =====
+function field(path, obj, label, unit){
+  return '<div class="field"><label for="f-'+path+'">'+esc(label)+badge(obj.src)+(unit?'<span class="unit">'+esc(unit)+'</span>':'')+
+    '</label><input id="f-'+path+'" data-path="'+path+'" inputmode="decimal" value="'+(obj.v===null||obj.v===undefined?'':(+obj.v).toString())+'"></div>';
+}
+
+function renderSite(){
+  const c = site.constraints; let h = '';
+  if(!site.boundary){
+    h += '<div class="empty">Draw the site boundary with the polygon or rectangle tool on the left of the map. Search a postcode to get there faster.</div>';
+  } else {
+    h += '<h2>Site</h2><div class="kv"><span class="k">Borough</span><span class="v">'+esc(site.borough||'not yet checked')+'</span></div>';
+    h += field('area', site.area, 'Site area', 'm². Measured from your boundary, not a title plan. Type to override.');
+    h += '<h2>Planning constraints</h2>';
+    if(c.status==='running') h += '<p class="note">Checking planning data…</p>';
+    if(c.status==='error') h += '<div class="flag bad">'+esc(c.error)+' Constraints are unavailable, not clear. <button class="link" id="recheck">Try again</button></div>';
+    if(c.status==='stale') h += '<div class="flag">Boundary changed since the last check. <button class="link" id="recheck">Check again</button></div>';
+    if(c.status==='done' || c.status==='stale'){
+      h += c.items.length ? '<ul class="clist">'+c.items.map(entLine).join('')+'</ul>' : '<p>No designations found inside the boundary in the data.</p>';
+      h += '<h2>Within 50 m</h2>';
+      h += c.nearby.length ? '<ul class="clist">'+c.nearby.map(entLine).join('')+'</ul>' : '<p class="note">None found in the data.</p>';
+      const found = new Set(c.items.map(e=>e.dataset));
+      const none = c.checked.filter(d=>!found.has(d) && d!=='tree-preservation-zone').map(d=>DATASETS[d]);
+      h += '<h2>Not found, not proof of absence</h2><p class="note">'+esc(none.join(', '))+'. Data coverage varies by council.</p>';
+      h += '<h2>Always check by hand</h2><ul class="clist"><li>'+badge('unavailable')+' '+esc(ALWAYS_CHECK['tree-preservation-zone'])+'</li><li>'+badge('unavailable')+' '+esc(ALWAYS_CHECK.planning)+'</li><li>'+badge('unavailable')+' Ownership needs a title register from HM Land Registry.</li></ul>';
+      h += '<p class="note">Checked '+new Date(c.at).toLocaleString('en-GB')+'. Source: planning.data.gov.uk (beta).</p>';
+    }
+    if(c.status==='none') h += '<button id="recheck">Check constraints</button>';
+  }
+  h += '<h2>Notes</h2><textarea id="notes" rows="4" style="width:100%;font:inherit;padding:6px;border:1px solid var(--line);border-radius:4px">'+esc(site.notes)+'</textarea>';
+  $('#p-site').innerHTML = h;
+  const rc = $('#recheck'); if(rc) rc.onclick = checkConstraints;
+}
+
+function renderScheme(){
+  let h = '<h2>Homes</h2><p class="note">A design test to size the site, not a view on what planning would allow.</p>';
+  h += '<div class="twrap"><table><thead><tr><th>Type</th><th>Size m²</th><th>Number</th><th></th></tr></thead><tbody>';
+  site.units.forEach((u,i)=>{
+    h += '<tr><td><input class="txt" data-u="'+i+'" data-k="label" value="'+esc(u.label)+'"></td>'+
+      '<td><input data-u="'+i+'" data-k="size" inputmode="decimal" value="'+(u.size??'')+'">'+badge(u.sizeSrc)+'</td>'+
+      '<td><input data-u="'+i+'" data-k="count" inputmode="numeric" value="'+(u.count??'')+'"></td>'+
+      '<td><button class="link" data-del="'+i+'" aria-label="Remove row">Remove</button></td></tr>';
+  });
+  h += '</tbody></table></div>';
+  h += '<div class="row"><select id="preset"><option value="">Add a home type…</option>'+PRESETS.map((p,i)=>'<option value="'+i+'">'+p[0]+' ('+p[1]+' m²)</option>').join('')+'<option value="custom">Custom</option></select></div>';
+  h += '<p class="note">Preset sizes are the Nationally Described Space Standard minimums (2015). Check the current standard.</p>';
+  h += '<h2>Building</h2>';
+  h += field('storeys', site.storeys, 'Storeys', 'average across the scheme');
+  h += field('efficiency', site.efficiency, 'Efficiency', '% of floor area inside homes. Around 80 to 85 for flats, 100 for houses.');
+  h += '<h2>Result</h2><div class="kv" id="capOut"></div>';
+  $('#p-scheme').innerHTML = h;
+  updateCapacity();
+  $('#preset').onchange = e=>{
+    const v = e.target.value; if(v==='') return;
+    if(v==='custom') site.units.push({label:'Custom', size:null, count:1, price:null, sizeSrc:'unavailable'});
+    else site.units.push({label:PRESETS[v][0], size:PRESETS[v][1], count:1, price:null, sizeSrc:'estimate'});
+    markDirty(); renderScheme(); renderViab();
+  };
+  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ site.units.splice(+b.dataset.del,1); markDirty(); renderScheme(); renderViab(); });
+}
+function cap(){ return calcCapacity(site.units, site.efficiency.v, site.storeys.v, num(site.area.v)); }
+function updateCapacity(){
+  const c = cap(); const el = $('#capOut'); if(!el) return;
+  el.innerHTML = [
+    ['Homes', c.homes], ['Floor area inside homes', m2(c.homeArea)], ['Gross internal area (GIA)', m2(c.gia)],
+    ['Footprint', m2(c.footprint)], ['Site coverage', site.area.v?pct(c.coverage):'needs site area'],
+    ['Density', site.area.v?Math.round(c.density)+' homes per ha':'needs site area']
+  ].map(r=>'<span class="k">'+r[0]+'</span><span class="v">'+r[1]+'</span>').join('');
+}
+
+function renderViab(){
+  let h = '<h2>Sales values</h2>';
+  if(!site.units.length) h += '<div class="empty">Add home types in step 2 first.</div>';
+  else {
+    h += '<div class="twrap"><table><thead><tr><th>Type</th><th>Number</th><th>Price each £</th></tr></thead><tbody>';
+    site.units.forEach((u,i)=>{
+      h += '<tr><td>'+esc(u.label)+'</td><td>'+(u.count??'')+'</td><td><input data-u="'+i+'" data-k="price" inputmode="numeric" value="'+(u.price??'')+'">'+badge(u.price===null||u.price===''?'unavailable':'user')+'</td></tr>';
+    });
+    h += '</tbody></table></div><p class="note">Use local sold prices for new-build homes. Nothing is looked up.</p>';
+  }
+  VFIELDS.forEach(f=>{ h += f.length===1 ? '<h2>'+f[0]+'</h2>' : field('via.'+f[0], site.via[f[0]], f[1], f[2]); });
+  h += '<div id="viabOut"></div>';
+  $('#p-viab').innerHTML = h;
+  updateViab();
+}
+function viabResult(){
+  const c = cap(); const r = calcViability(c, site.units, site.via);
+  const missing = missingInputs(site.units, site.via);
+  const sens = [-0.1,0,0.1,0.2].map(b=>[-0.1,-0.05,0,0.05,0.1].map(g=>calcViability(c, site.units, site.via, {gdv:1+g, build:1+b}).rlv));
+  return {c, r, missing, sens};
+}
+function updateViab(){
+  const el = $('#viabOut'); if(!el) return;
+  const {r, missing, sens} = viabResult(); const complete = !missing.length;
+  let h = '<h2>Result</h2>';
+  if(!complete) h += '<div class="flag">Incomplete. Missing: '+esc(missing.join(', '))+'. Figures below are partial and not a conclusion.</div>';
+  else if(r.headroom>=0) h += '<div class="flag good">At the asking price, the scheme meets your target profit, with '+gbp(r.headroom)+' headroom.</div>';
+  else h += '<div class="flag bad">At the asking price, the scheme falls short of your target profit by '+gbp(-r.headroom)+' of land value.</div>';
+  h += '<div class="kv">'+[
+    ['Sales value (GDV)', gbp(r.gdv)], ['Construction incl. fees', gbp(r.construction)], ['CIL and S106', gbp(r.levies)],
+    ['Finance', gbp(r.devFinance+r.landFinance)], ['Sales costs', gbp(r.sales)], ['Land and purchase costs', gbp(r.land+r.purchase)],
+    ['Total cost', gbp(r.totalCost)], ['Profit at asking price', gbp(r.profit)+' ('+pct(r.profitPct)+')'],
+    ['Residual land value at target profit', gbp(r.rlv)]
+  ].map(x=>'<span class="k">'+x[0]+'</span><span class="v">'+x[1]+'</span>').join('')+'</div>';
+  h += '<h2>Sensitivity: residual land value</h2><div class="twrap"><table class="sens"><thead><tr><th>Build cost</th>'+
+    ['-10%','-5%','Base','+5%','+10%'].map(x=>'<th>Sales '+x+'</th>').join('')+'</tr></thead><tbody>';
+  ['-10%','Base','+10%','+20%'].forEach((lab,i)=>{
+    h += '<tr><td>'+lab+'</td>'+sens[i].map((v,j)=>{
+      const cls = (complete ? (v>=r.land?'ok':'no') : '') + (i===1&&j===2?' base':'');
+      return '<td class="'+cls.trim()+'">'+gbp(v)+'</td>';
+    }).join('')+'</tr>';
+  });
+  h += '</tbody></table></div><p class="note">'+(complete?'Shaded cells show whether land value covers the asking price.':'No shading until every input is filled in.')+
+    ' Simplified model: finance on half of build costs over the build period plus all costs over the sales period. A monthly cash flow is not included.</p>';
+  el.innerHTML = h;
+}
+
+function renderSaved(){
+  const all = loadAll();
+  let h = '<h2>Saved sites</h2>';
+  h += all.length ? '<ul class="clist saved">'+all.map(s=>'<li><span>'+esc(s.name||'Unnamed site')+'<br><small class="note">'+esc(s.borough||'')+(s.savedAt?' · saved '+new Date(s.savedAt).toLocaleDateString('en-GB'):'')+'</small></span><button class="ghost" data-load="'+s.id+'">Open</button><button class="link" data-rm="'+s.id+'">Delete</button></li>').join('')+'</ul>'
+    : '<div class="empty">No saved sites yet. Sites are saved in this browser only.</div>';
+  h += '<h2>Export and backup</h2><div class="row"><button class="ghost" id="csvOne">This site for Notion (CSV)</button><button class="ghost" id="csvAll">All sites for Notion (CSV)</button></div>';
+  h += '<div class="row"><button class="ghost" id="jsonOut">Back up all (JSON)</button><button class="ghost" id="jsonIn">Restore backup</button></div>';
+  h += '<p class="note">Saved sites live in this browser. Back up regularly. Don\'t enter anything confidential: this page has no login.</p>';
+  $('#p-saved').innerHTML = h;
+  document.querySelectorAll('[data-load]').forEach(b=>b.onclick=()=>openSite(b.dataset.load));
+  document.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{
+    if(!confirm('Delete this saved site? This cannot be undone.')) return;
+    saveAll(loadAll().filter(s=>s.id!==b.dataset.rm)); renderSaved();
+  });
+  $('#csvOne').onclick = ()=>download((site.name||'site')+'.csv', toCSV([site]), 'text/csv');
+  $('#csvAll').onclick = ()=>download('sites.csv', toCSV(loadAll()), 'text/csv');
+  $('#jsonOut').onclick = ()=>download('sites-backup-'+new Date().toISOString().slice(0,10)+'.json', JSON.stringify(loadAll(),null,1), 'application/json');
+  $('#jsonIn').onclick = ()=>$('#importFile').click();
+}
+function renderAll(){ $('#siteName').value = site.name; renderSite(); renderScheme(); renderViab(); renderSaved(); }
+
+// ===== Input handling (updates outputs without re-rendering, so focus is kept) =====
+document.addEventListener('input', e=>{
+  const t = e.target;
+  if(t.id==='siteName'){ site.name = t.value; markDirty(); return; }
+  if(t.id==='notes'){ site.notes = t.value; markDirty(); return; }
+  if(t.dataset.path){
+    const parts = t.dataset.path.split('.');
+    const obj = parts.length===2 ? site[parts[0]][parts[1]] : site[parts[0]];
+    const val = t.value.trim()==='' ? null : Number(t.value.replace(/[£,\s]/g,''));
+    obj.v = isNaN(val) ? null : val;
+    obj.src = obj.v===null ? 'unavailable' : 'user';
+    const b = t.parentElement.querySelector('.src'); if(b){ b.className='src s-'+obj.src; b.textContent=SRC_LABEL[obj.src]; }
+    markDirty(); updateCapacity(); updateViab(); return;
+  }
+  if(t.dataset.u!==undefined){
+    const u = site.units[+t.dataset.u], k = t.dataset.k;
+    if(k==='label') u.label = t.value;
+    else { const v = t.value.trim()===''?null:Number(t.value.replace(/[£,\s]/g,'')); u[k] = isNaN(v)?null:v;
+      if(k==='size') { u.sizeSrc = u.size===null?'unavailable':'user'; }
+      const b = t.parentElement.querySelector('.src');
+      if(b){ const s = k==='size'?u.sizeSrc:(u.price===null?'unavailable':'user'); b.className='src s-'+s; b.textContent=SRC_LABEL[s]; } }
+    markDirty(); updateCapacity(); updateViab();
+  }
+});
+// Re-render the other tab's copy of units when switching, so labels and counts stay in step
+document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('nav.tabs button').forEach(x=>x.setAttribute('aria-selected', x===b));
+  document.querySelectorAll('section.panel').forEach(p=>p.classList.toggle('on', p.id==='p-'+b.dataset.tab));
+  if(b.dataset.tab==='viab') renderViab(); if(b.dataset.tab==='scheme') renderScheme(); if(b.dataset.tab==='saved') renderSaved();
 });
 
-document.getElementById("copy").addEventListener("click", async () => {
-  const text = results.join("\n");
-  try { await navigator.clipboard.writeText(text); document.getElementById("copy").textContent = "Copied"; }
-  catch { prompt("Copy these results:", text); }
-});
+// ===== Storage =====
+function loadAll(){ try{ return JSON.parse(localStorage.getItem(STORE)||'[]'); }catch{ return []; } }
+function saveAll(a){ try{ localStorage.setItem(STORE, JSON.stringify(a)); return true; }catch{ alert('Could not save in this browser. Use Back up to keep a copy.'); return false; } }
+$('#saveBtn').onclick = ()=>{
+  const all = loadAll().filter(s=>s.id!==site.id);
+  site.savedAt = new Date().toISOString();
+  all.unshift(JSON.parse(JSON.stringify(site)));
+  if(saveAll(all)){ markClean(); renderSaved(); }
+};
+function openSite(id){
+  if(dirty && !confirm('You have unsaved changes. Open another site anyway?')) return;
+  const s = loadAll().find(x=>x.id===id); if(!s) return;
+  site = Object.assign(blankSite(), s);
+  drawSavedBoundary(); markClean(); renderAll();
+}
+$('#newBtn').onclick = ()=>{
+  if(dirty && !confirm('You have unsaved changes. Start a new site anyway?')) return;
+  site = blankSite(); drawSavedBoundary(); markClean(); renderAll();
+};
+$('#importFile').onchange = e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const rd = new FileReader();
+  rd.onload = ()=>{ try{ const d = JSON.parse(rd.result); if(!Array.isArray(d)) throw 0;
+      const all = loadAll(); d.forEach(s=>{ if(s && s.id && !all.find(x=>x.id===s.id)) all.push(s); });
+      saveAll(all); renderSaved(); alert('Restored. Existing sites were kept.');
+    }catch{ alert('That file is not a site backup.'); } };
+  rd.readAsText(f); e.target.value='';
+};
+window.addEventListener('beforeunload', e=>{ if(dirty){ e.preventDefault(); e.returnValue=''; } });
+
+// ===== Export =====
+function download(name, text, type){
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text],{type})); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+const NOTION_TAG = {'conservation-area':'Conservation area','flood-risk-zone':'Flood zone','tree-preservation-zone':'TPO','article-4-direction-area':'Article 4'};
+function toCSV(list){
+  const q = v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  const rows = [['Site','Status','Borough','Site area m2','Est homes','Constraints','Notes']];
+  list.forEach(s=>{
+    const c = s.constraints||{items:[],nearby:[]};
+    const tags = new Set();
+    (c.items||[]).forEach(e=>{ if(NOTION_TAG[e.dataset]) tags.add(NOTION_TAG[e.dataset]); if(e.dataset==='listed-building') tags.add('Listed building nearby'); });
+    (c.nearby||[]).forEach(e=>{ if(e.dataset==='listed-building') tags.add('Listed building nearby'); });
+    const homes = (s.units||[]).reduce((a,u)=>a+(Number(u.count)||0),0);
+    const b = (s.borough||'').includes('Hounslow')?'Hounslow':(s.borough||'').includes('Richmond')?'Richmond':'';
+    rows.push([s.name||'Unnamed site','Assessed',b, s.area&&s.area.v?Math.round(s.area.v):'', homes||'', [...tags].join(','), s.notes||'']);
+  });
+  return rows.map(r=>r.map(q).join(',')).join('\r\n');
+}
+
+// ===== Print report =====
+function buildReport(){
+  const {c, r, missing, sens} = viabResult(); const k = site.constraints;
+  let h = '<h1>'+esc(site.name||'Unnamed site')+'</h1><p>'+esc(site.borough||'Borough not checked')+'. Prepared '+new Date().toLocaleDateString('en-GB')+'. Concept appraisal only: not a planning view, valuation or cost plan.</p>';
+  h += '<h2>Site</h2><p>Area: '+m2(num(site.area.v))+' ('+SRC_LABEL[site.area.src]+').</p>';
+  h += '<h2>Constraints in the boundary</h2>'+((k.items||[]).length?'<ul>'+k.items.map(e=>'<li>'+esc(DATASETS[e.dataset]||e.dataset)+': '+esc(e.name||e.reference)+' ('+SRC_LABEL[entQuality(e)]+')</li>').join('')+'</ul>':'<p>'+(k.status==='done'?'None found in the data. Not proof of absence.':'Not checked.')+'</p>');
+  if((k.nearby||[]).length) h += '<h2>Within 50 m</h2><ul>'+k.nearby.map(e=>'<li>'+esc(DATASETS[e.dataset]||e.dataset)+': '+esc(e.name||e.reference)+'</li>').join('')+'</ul>';
+  h += '<p>Unavailable, check by hand: tree preservation orders, planning history, ownership.</p>';
+  h += '<h2>Scheme tested</h2><table><tr><th>Type</th><th>Size m²</th><th>Number</th><th>Price each</th></tr>'+site.units.map(u=>'<tr><td>'+esc(u.label)+'</td><td>'+(u.size??'')+'</td><td>'+(u.count??'')+'</td><td>'+gbp(num(u.price))+'</td></tr>').join('')+'</table>';
+  h += '<p>'+c.homes+' homes, GIA '+m2(c.gia)+', '+site.storeys.v+' storeys, coverage '+pct(c.coverage)+'.</p>';
+  h += '<h2>Viability</h2>'+(missing.length?'<p><b>Incomplete.</b> Missing: '+esc(missing.join(', '))+'.</p>':'');
+  h += '<table>'+[['GDV',r.gdv],['Construction incl. fees',r.construction],['CIL and S106',r.levies],['Finance',r.devFinance+r.landFinance],['Sales costs',r.sales],['Land and purchase',r.land+r.purchase],['Profit at asking price',r.profit],['Residual land value at '+site.via.profit.v+'% profit',r.rlv]].map(x=>'<tr><td>'+x[0]+'</td><td>'+gbp(x[1])+'</td></tr>').join('')+'</table>';
+  h += '<h2>Assumptions</h2><table>'+VFIELDS.filter(f=>f.length>1).map(f=>'<tr><td>'+esc(f[1])+'</td><td>'+(site.via[f[0]].v??'unavailable')+' '+esc(f[2])+'</td><td>'+SRC_LABEL[site.via[f[0]].src]+'</td></tr>').join('')+'</table>';
+  h += '<h2>Sensitivity: residual land value</h2><table><tr><th>Build cost</th><th>Sales -10%</th><th>-5%</th><th>Base</th><th>+5%</th><th>+10%</th></tr>'+['-10%','Base','+10%','+20%'].map((l,i)=>'<tr><td>'+l+'</td>'+sens[i].map(v=>'<td>'+gbp(v)+'</td>').join('')+'</tr>').join('')+'</table>';
+  if(site.notes) h += '<h2>Notes</h2><p>'+esc(site.notes)+'</p>';
+  h += '<p><small>Planning data: planning.data.gov.uk (beta, Open Government Licence). Map: OpenStreetMap contributors.</small></p>';
+  $('#report').innerHTML = h;
+}
+$('#printBtn').onclick = ()=>{ buildReport(); window.print(); };
+window.addEventListener('beforeprint', buildReport);
+
+renderAll();
 </script>
 </body>
 </html>
