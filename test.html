@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Site tool: risk test 2</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  body{margin:0;font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color:#1e2d36;background:#f5f7f7}
+  main{max-width:780px;margin:0 auto;padding:20px 16px 48px}
+  h1{font-size:1.4rem;margin:0 0 4px} p{color:#5b6a73}
+  button{font:inherit;padding:9px 14px;border:1px solid #1e2d36;background:#1e2d36;color:#fff;border-radius:6px;cursor:pointer}
+  button.ghost{background:#fff;color:#1e2d36}
+  #map{height:320px;border:1px solid #d3dcdf;margin:12px 0}
+  pre{background:#fff;border:1px solid #d3dcdf;padding:12px;white-space:pre-wrap;word-break:break-word;font-size:.85rem}
+</style>
+</head>
+<body>
+<main>
+  <h1>Risk test 2</h1>
+  <p>Tests aerial photos, property plot outlines and London planning history. Click Run, check the map looks right, then copy the results into the chat.</p>
+  <button id="run">Run tests</button> <button id="copy" class="ghost" disabled>Copy results</button>
+  <div id="map"></div>
+  <pre id="out">Not run yet.</pre>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const out = document.getElementById('out'); const log = [];
+function say(s){ log.push(s); out.textContent = log.join('\n'); }
+const map = L.map('map').setView([51.4466,-0.4096], 18);
+function withTimeout(p, ms){ return Promise.race([p, new Promise((_,r)=>setTimeout(()=>r(new Error('timed out')), ms))]); }
+function why(e){ return e instanceof TypeError ? 'blocked by the browser (cross-site restriction)' : e.message; }
+
+async function testAerial(){
+  return new Promise(res=>{
+    let ok=0, bad=0;
+    const l = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19, attribution:'Esri World Imagery'}).addTo(map);
+    l.on('tileload',()=>ok++); l.on('tileerror',()=>bad++);
+    setTimeout(()=>{ say('Aerial photos: '+(ok>0?'PASS '+ok+' tiles':'FAIL '+bad+' errors')); res(); }, 7000);
+  });
+}
+async function testPlots(){
+  const b = map.getBounds();
+  const w = [[b.getWest(),b.getSouth()],[b.getEast(),b.getSouth()],[b.getEast(),b.getNorth()],[b.getWest(),b.getNorth()],[b.getWest(),b.getSouth()]].map(c=>c[0].toFixed(6)+' '+c[1].toFixed(6)).join(',');
+  const url = 'https://www.planning.data.gov.uk/entity.geojson?dataset=title-boundary&geometry_relation=intersects&limit=500&geometry='+encodeURIComponent('POLYGON(('+w+'))');
+  const t0 = performance.now();
+  try{
+    const r = await withTimeout(fetch(url), 30000); if(!r.ok) throw new Error('HTTP '+r.status);
+    const gj = await r.json(); const n = (gj.features||[]).length;
+    L.geoJSON(gj,{style:{color:'#ffd400',weight:2,fill:false}}).addTo(map);
+    const sample = n ? gj.features[0].properties : {};
+    say('Plot outlines: PASS '+n+' plots in view, '+Math.round(performance.now()-t0)+' ms. Sample fields: '+Object.keys(sample).join(', '));
+  }catch(e){ say('Plot outlines: FAIL '+why(e)); }
+}
+async function testDatahub(){
+  const url = 'https://planningdata.london.gov.uk/api-guest/applications/_search';
+  try{
+    const r = await withTimeout(fetch(url,{method:'POST', headers:{'Content-Type':'application/json','X-API-AllowRequest':'be2rmRnt&'},
+      body:JSON.stringify({size:1, query:{match_all:{}}})}), 30000);
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d = await r.json(); const hit = d.hits && d.hits.hits && d.hits.hits[0];
+    if(!hit){ say('Planning history (London Datahub): reachable, but no records returned'); return; }
+    const s = hit._source; const keys = Object.keys(s);
+    say('Planning history (London Datahub): PASS. Total records: '+JSON.stringify(d.hits.total));
+    say('Fields: '+keys.join(', '));
+    const pick = {}; keys.forEach(k=>{ const v=s[k]; if(v!==null && typeof v!=='object' && String(v).length<80) pick[k]=v; });
+    say('Sample values: '+JSON.stringify(pick));
+    if(s.centroid || s.location || s.geometry) say('Location fields: '+JSON.stringify(s.centroid||s.location||'').slice(0,160));
+  }catch(e){ say('Planning history (London Datahub): FAIL '+why(e)); }
+}
+document.getElementById('run').onclick = async e=>{
+  e.target.disabled = true; log.length = 0; say('Page: '+location.href);
+  await testAerial(); await testPlots(); await testDatahub();
+  say('Done. Do the yellow plot outlines line up with the houses and gardens in the photo? Say yes or no.');
+  document.getElementById('copy').disabled = false; e.target.disabled = false;
+};
+document.getElementById('copy').onclick = async ()=>{
+  try{ await navigator.clipboard.writeText(log.join('\n')); document.getElementById('copy').textContent='Copied'; }
+  catch{ prompt('Copy these results:', log.join('\n')); }
+};
+</script>
+</body>
+</html>
